@@ -42,6 +42,18 @@ The frozen Stage A baseline — 18/18 attacks blocked, 4/4 controls, zero leakag
 is [`STAGE_A_BASELINE.md`](STAGE_A_BASELINE.md); the baselines B0–B3 must not move
 those numbers silently.
 
+**Stage B** (corpus-driven: prompt-injection, canary, memory-poisoning,
+extraction) measures the **current** defence unmodified and documents where it
+fails — it does not add defences. See
+[`stage_b/README.md`](stage_b/README.md) and
+[`stage_b/STAGE_B_FINDINGS.md`](stage_b/STAGE_B_FINDINGS.md) (two open
+control-plane gaps recorded). No live model: injection figures are screen
+permeability, an upper bound on real attack success.
+
+```bash
+npm run sif-bench:stage-b
+```
+
 ### Database-enforced gates (Tracks 4 & 5)
 
 Tenant-isolation and evidence-completeness gates are realised against a **real

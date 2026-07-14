@@ -13,14 +13,14 @@ paper's claim strength, subordinate to [`../../docs/CLAIMS.md`](../../docs/CLAIM
 
 | Proposed claim | Required evidence | Current status |
 |----------------|-------------------|----------------|
-| Intent-bound access reduces over-disclosure | baseline comparison over multiple workloads | Not established |
+| Intent-bound access reduces over-disclosure | baseline comparison over multiple workloads | Not established. Stage B (v0.2) caveat: because `requested_operations` is agent-declared, an object protected **only** by scope was extracted via a crafted intent (GAP-1); purpose+consent-protected objects held. Scope alone is not a barrier against the intent's author |
 | Holder binding prevents token replay | replay attack experiments | Stage A adversarial (v0.2): deterministic — bearer reuse, forged proof-of-possession, expiry, scope/tenant tamper and audience confusion all blocked at the expected check; concurrency/timing not yet exercised |
 | Revocation terminates active authority | persistent concurrent revocation tests | Stage A adversarial (v0.2): in-session reuse-after-revoke deterministically blocked; persistent + concurrent revocation still pending (durable revocation is the separate persistence arm) |
 | Human gates prevent unauthorized execution | bypass and race-condition suite | Stage A adversarial (v0.2): agent self-approval, impostor-agent, cross-tenant, unknown-approver and denied-action approval all blocked; a prior self-approval gap was closed; race-condition/concurrency suite still pending |
 | Context broker preserves utility | task success vs disclosure analysis | Not established |
 | Evidence chain enables reconstruction | restart, tamper and restore experiments | Database-enforced (v0.1) + Stage A adversarial (v0.2): re-verifies after a fresh connection and a logical restore; four in-process tamper classes (content, link, re-sign, splice) each detected at the expected seq; full physical restart/pg_restore still pending |
-| Tenant isolation holds | database, cache, vector and backup tests | Database RLS-enforced (v0.1): direct-query, missing-context, forged-id and evidence isolation tested; cache/vector/full-backup isolation pending |
-| Gateway reduces injection success | large attack corpus and ablation | One/few heuristic cases |
+| Tenant isolation holds | database, cache, vector and backup tests | Database RLS-enforced (v0.1): direct-query, missing-context, forged-id and evidence isolation tested. Stage B (v0.2): cross-tenant object **content** held under crafted intents, but the in-memory engine's `listMemoryMeta(tenantId)` read accessor is **not caller-bound** and enumerated a foreign object id (GAP-2) — isolation of in-memory metadata currently depends on the API layer; the durable RLS path enforces it independently. cache/vector/full-backup isolation pending |
+| Gateway reduces injection success | large attack corpus and ablation | Stage B measured (v0.2), screen-permeability only: the current heuristic lowers attack success from ~0.93 (no screen) to ~0.57, but is bypassed by base64, homoglyph, letter-spacing, multilingual, hidden-text and fake-system payloads; benign FPR 0.0. Characterised as a weak blocklist, NOT an injection defence; structured instruction/data separation (arm C/D) and a live-model harness remain to be built |
 | Continuum is model-independent | multiple real model/provider evaluations | Not established |
 | Overhead is operationally acceptable | load, latency and throughput study | Not established |
 
@@ -48,5 +48,11 @@ paper's claim strength, subordinate to [`../../docs/CLAIMS.md`](../../docs/CLAIM
   positive controls guarding against over-blocking. It is single-process and
   deterministic: it does **not** establish concurrency/timing, persistence-tier,
   or any model/corpus behaviour.
+- **Stage B measured (v0.2)** — measured against the corpus-driven adversarial
+  suite (`research/sif-bench/stage_b/STAGE_B_FINDINGS.md`) with **no live model**:
+  prompt-injection figures are screen permeability (an upper bound on real attack
+  success), and structural results are exact for the seeded data paths under a
+  single process. Records failures, including two open control-plane gaps (GAP-1
+  scope self-declaration, GAP-2 uncaller-bound in-memory metadata read).
 - **One/few heuristic cases** — the pattern-based screen blocks known cases;
   requires a large adversarial corpus and an ablation to characterise.

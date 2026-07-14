@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://continuum/sif-bench/stage_b/case.schema.json",
+  "title": "SIF-Bench Stage B case",
+  "description": "One adversarial or benign-control case in a Stage B corpus. A case declares its expected security AND task outcome; a runner measures the current system against it without modification, and a scorer aggregates by family and severity. A case is never assumed to be blocked — the point is honest measurement.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_id",
+    "track",
+    "attack_family",
+    "input",
+    "expected_security_outcome",
+    "expected_task_outcome",
+    "required_controls",
+    "severity",
+    "source_type"
+  ],
+  "properties": {
+    "case_id": {
+      "type": "string",
+      "pattern": "^[A-Z0-9]+-[A-Z0-9]+-[0-9]{3}$",
+      "description": "Stable id, e.g. PI-DIRECT-001."
+    },
+    "track": {
+      "type": "string",
+      "enum": ["prompt_injection", "canary_exfiltration", "memory_poisoning", "extraction"]
+    },
+    "attack_family": { "type": "string", "minLength": 1 },
+    "input": {
+      "type": "object",
+      "description": "Track-specific payload the runner applies to the current system.",
+      "additionalProperties": true
+    },
+    "expected_security_outcome": {
+      "type": "string",
+      "enum": ["BLOCK", "ALLOW", "SURFACE_ABSENT"],
+      "description": "BLOCK: the control plane must refuse. ALLOW: a legitimate/benign control that must succeed. SURFACE_ABSENT: the attacked capability does not exist in v0.1, so there is nothing to exploit (this is not a security pass)."
+    },
+    "expected_task_outcome": {
+      "type": "string",
+      "enum": ["CONTINUE_SAFELY", "DENY", "NOT_APPLICABLE"]
+    },
+    "required_controls": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Controls that, if present, should handle this case. Named for traceability; their absence is itself a finding."
+    },
+    "severity": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+    "source_type": { "type": "string", "enum": ["synthetic"] },
+    "notes": { "type": "string" }
+  }
+}
