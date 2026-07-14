@@ -117,6 +117,15 @@ create/replay/conflict/missing_key classification. Action–evidence divergence
 (orphan actions) measured **0**; on the evidence-append-failure case the whole create
 transaction rolls back, so no action exists without its evidence.
 
+The two digests (idempotency-key digest for repeated-use correlation vs request
+digest for semantic-identity) are kept in **separate fields** and never merged; the
+key digest is **tenant-scoped and versioned** (`kd1:`), so the same raw key is
+unlinkable across tenants, and rotating its secret does not break replay (which keys
+on the raw `idempotency_key` column, not the digest). Construction, rotation,
+migration and the canonicalisation guarantees/boundaries (Unicode NFC and identifier
+case are caller responsibilities) are specified in [`DIGEST.md`](./DIGEST.md) and
+pinned by `src/canonicalization.test.ts`.
+
 ## Bounded-scope limitations
 
 Single PostgreSQL instance (no cross-node / distributed exactly-once). Failure model

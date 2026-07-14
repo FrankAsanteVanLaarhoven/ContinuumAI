@@ -40,7 +40,7 @@ async function emit(
        (tenant_id, principal_id, intent_id, operation, idempotency_key_digest, request_digest,
         action_id, original_action_id, decision, state, policy_version, capability_id, classification)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-    [req.tenant, req.principal, req.intent, req.operation, keyDigest(idemKey), digest,
+    [req.tenant, req.principal, req.intent, req.operation, keyDigest(req.tenant, idemKey), digest,
      actionId, originalActionId, decision, state, req.policy_version, req.capability, classification],
   );
 }

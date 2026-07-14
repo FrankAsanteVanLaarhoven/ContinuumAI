@@ -22,8 +22,9 @@ the uniqueness domain, so a differing one with the same key/operation is a CONFL
 under I6-C rather than a silent second action.
 
 Result document: [`I6_RESULTS.md`](./I6_RESULTS.md) · case catalog:
-[`cases/CATALOG.md`](./cases/CATALOG.md). The generated `report.json` is gitignored;
-regenerate with the command above.
+[`cases/CATALOG.md`](./cases/CATALOG.md) · digest & evidence design:
+[`DIGEST.md`](./DIGEST.md). The generated `report.json` is gitignored; regenerate
+with the command above.
 
 Files:
 

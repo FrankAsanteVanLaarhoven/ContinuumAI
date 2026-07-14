@@ -19,6 +19,10 @@ export interface DbConfig {
 }
 
 export const DIGEST_ALG = "sha256/continuum-canonical-v1";
+export const KEY_DIGEST_VERSION = "kd1"; // versioned so the construction can migrate
+// Demonstration secret. Production holds this in a KMS / secret store with rotation;
+// it keys ONLY the evidence-correlation digest, never the replay lookup (which uses
+// the raw idempotency_key column in i6_action), so rotation cannot break replay.
 const EVIDENCE_KEY_SECRET = ":i6-evidence-key-secret-2026";
 
 export function i6Config(): DbConfig {
@@ -54,9 +58,15 @@ export function canonicalRequestDigest(req: ActionRequest): string {
   return sha256Hex(canonicalJson(req));
 }
 
-/** Keyed digest of the idempotency key for correlation without exposing the raw value. */
-export function keyDigest(idempotencyKey: string): string {
-  return sha256Hex(idempotencyKey + EVIDENCE_KEY_SECRET);
+/**
+ * Keyed digest of the idempotency key for evidence CORRELATION without exposing the
+ * raw value. Tenant-scoped so the SAME raw key yields UNLINKABLE digests across
+ * tenants. Distinct in purpose from the request digest: this identifies repeated use
+ * of the same client key; the request digest decides whether the repeat is
+ * semantically identical. The two are never merged into one field.
+ */
+export function keyDigest(tenant: string, idempotencyKey: string): string {
+  return KEY_DIGEST_VERSION + ":" + sha256Hex(tenant + "\x1f" + idempotencyKey + EVIDENCE_KEY_SECRET);
 }
 
 /** Reset both schemes to a clean slate before a case (as superuser). */
