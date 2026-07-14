@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://continuum.dev/protocol/cip-007-evidence.schema.json",
+  "title": "CIP-007 Evidence Envelope",
+  "description": "One append-only, hash-chained, signed audit record. MUST store identifiers and digests only — never plaintext secrets or raw sensitive payloads.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "cip", "event_id", "trace_id", "seq", "tenant_id", "owner_id",
+    "principal", "policy_version", "event_type", "timestamp",
+    "prev_hash", "hash", "signature"
+  ],
+  "properties": {
+    "cip": { "const": "CIP-007" },
+    "event_id": { "type": "string" },
+    "trace_id": { "type": "string" },
+    "seq": { "type": "integer", "minimum": 0 },
+    "tenant_id": { "type": "string" },
+    "owner_id": { "type": "string" },
+    "principal": { "type": "string" },
+    "intent_id": { "type": ["string", "null"] },
+    "policy_version": { "type": "string" },
+    "event_type": { "type": "string" },
+    "decision": { "type": ["string", "null"] },
+    "disclosed_objects": { "type": "array", "items": { "type": "string" } },
+    "disclosure_digest": { "type": ["string", "null"] },
+    "capability_id": { "type": ["string", "null"] },
+    "tool_calls": { "type": "array" },
+    "human_approval": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "approver": { "type": "string" },
+        "at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "result_digest": { "type": ["string", "null"] },
+    "model": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string" },
+        "model_id": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "prev_hash": { "type": "string", "description": "hash of the previous envelope, or 'GENESIS'" },
+    "hash": { "type": "string", "description": "sha256(prev_hash + canonicalJson(body))" },
+    "signature": { "type": "string", "description": "Ed25519 signature over hash, base64" }
+  }
+}

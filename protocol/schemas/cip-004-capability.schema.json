@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://continuum.dev/protocol/cip-004-capability.schema.json",
+  "title": "CIP-004 Sovereign Capability Token",
+  "description": "A short-lived, holder-bound, non-transferable grant. MUST be verified with proof-of-possession; MUST NOT be treated as a bearer token.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "cip", "token_id", "issuer", "subject", "actor", "holder_key_pem",
+    "tenant_id", "intent_id", "purpose", "audience", "operations",
+    "resources", "issued_at", "expires_at", "nonce", "revocation_handle"
+  ],
+  "properties": {
+    "cip": { "const": "CIP-004" },
+    "token_id": { "type": "string" },
+    "issuer": { "type": "string" },
+    "subject": { "type": "string", "description": "owner on whose behalf authority is granted" },
+    "actor": { "type": "string", "description": "the agent exercising the capability" },
+    "holder_key_pem": { "type": "string", "description": "public key the holder MUST prove possession of" },
+    "tenant_id": { "type": "string" },
+    "intent_id": { "type": "string" },
+    "purpose": { "type": "string" },
+    "audience": { "type": "string" },
+    "operations": { "type": "array", "items": { "type": "string" } },
+    "resources": { "type": "array", "items": { "type": "string" }, "description": "exact permitted memory ids — never a wildcard scope" },
+    "maximum_disclosure": { "type": "integer", "minimum": 0 },
+    "data_classification": { "enum": ["public", "internal", "confidential", "restricted"] },
+    "model_id": { "type": ["string", "null"] },
+    "agent_build": { "type": ["string", "null"] },
+    "environment": { "type": "string" },
+    "risk_threshold": { "type": "number" },
+    "approval_state": { "enum": ["not_required", "pending", "approved"] },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "nonce": { "type": "string" },
+    "revocation_handle": { "type": "string" },
+    "evidence_correlation_id": { "type": "string" }
+  }
+}

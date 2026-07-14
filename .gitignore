@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+.vercel
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+research/**/results/*.json
+
+# Rust (reserved security-core, deferred)
+security-core/**/target/
+
+# Logs / OS
+*.log
+.DS_Store
+npm-debug.log*
+coverage/
