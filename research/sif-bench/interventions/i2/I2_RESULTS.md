@@ -74,6 +74,9 @@ for I2-A. ² The frozen accessor emits no audit envelope at all (evidence comple
 0), which is itself a gap the bound accessor closes.
 
 `passed = true`. Latency is a **single trial per arm**; no p50/p95/p99 is reported.
+The excess-metadata-ratio denominator, the three task-required fields, field-counting
+rules, and the opaque-handle properties (held vs deferred) are defined normatively in
+[`METRICS.md`](./METRICS.md).
 
 ### Probe battery (12 cases; bound arms run all, frozen runs the 3 it can express)
 
