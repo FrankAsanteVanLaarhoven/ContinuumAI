@@ -38,6 +38,7 @@ export interface EvidenceEnvelope {
   model: EvidenceModel | null;
   timestamp: string;
   prev_hash: string;
+  scope?: Record<string, unknown>;
   hash: string;
   signature: string;
 }
@@ -58,6 +59,9 @@ export interface EvidenceInput {
   human_approval?: { approver: string; at: string } | null;
   result_digest?: string | null;
   model?: EvidenceModel | null;
+  /** Intervention I1 — effective-scope provenance. Included in the hash only when
+   *  present, so evidence chains issued without I1 are byte-identical. */
+  scope?: Record<string, unknown>;
 }
 
 export interface ChainVerification {
@@ -102,6 +106,7 @@ export class EvidenceLedger {
       model: input.model ?? null,
       timestamp: new Date(input.nowMs).toISOString(),
       prev_hash: prevHash,
+      ...(input.scope !== undefined ? { scope: input.scope } : {}),
     };
 
     const hash = sha256Hex(prevHash + canonicalJson(body));

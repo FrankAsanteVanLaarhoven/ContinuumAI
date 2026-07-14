@@ -22,6 +22,7 @@
     "sif-bench:stage-a": "npm run test -w @continuum/core -- src/adversary.test.ts",
     "sif-bench:stage-b": "npm run test -w @continuum/core -- src/stageb/stage_b.test.ts",
     "sif-bench:concurrency": "npm run test -w @continuum/sif-concurrency",
+    "intervention:i1": "npm run test -w @continuum/core -- src/interventions/i1.test.ts",
     "build": "npm run build --workspaces --if-present",
     "dev": "npm run dev -w @continuum/console",
     "verify": "npm run typecheck && npm run test"

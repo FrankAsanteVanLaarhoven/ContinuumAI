@@ -142,3 +142,23 @@ export interface PolicyConfig {
   risk_threshold: number; // requests above this are denied
   capability_ttl_seconds: number;
 }
+
+/**
+ * Authoritative per-principal entitlement ceiling (intervention I1). An intent is
+ * a *request*; authority is the intersection of the request with what the
+ * principal is actually entitled to, delegated, and consented for. This is the
+ * source of authority the intent is NOT.
+ */
+export interface Entitlement {
+  principal_id: string;
+  tenant_id: string;
+  /** The operations this principal may ever request (the ceiling). */
+  allowed_operations: string[];
+  /** Owner delegation: operations the owner has delegated to this principal. */
+  delegated_operations: string[];
+}
+
+export interface EntitlementPolicy {
+  version: string;
+  entitlements: Entitlement[];
+}

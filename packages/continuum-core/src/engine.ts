@@ -52,6 +52,12 @@ import {
   type ModelCallRequest,
   type ModelCallResult,
 } from "./gateway";
+import {
+  computeEffectiveScope,
+  entitlementDigest,
+  type EffectiveScope,
+  type EntitlementMode,
+} from "./interventions/entitlement";
 
 const CANARY = "GB29NWBK60161331926819"; // the apex bank_iban — must never leak
 
@@ -144,12 +150,24 @@ export class ContinuumEngine {
   private injectionBlocked = 0;
   private egressCanaryBlocked = 0;
 
-  constructor(store?: Store) {
+  private readonly entitlementMode: EntitlementMode;
+
+  constructor(store?: Store, opts?: { entitlementMode?: EntitlementMode }) {
     this.store = store ?? createSeededStore();
+    this.entitlementMode = opts?.entitlementMode ?? "off";
     this.ledger = new EvidenceLedger(
       this.store.platform.privateKeyPem,
       this.store.platform.publicKeyPem,
       this.store.config.policy_version,
+    );
+  }
+
+  /** I1-C: has the entitlement policy rotated since this token was issued? */
+  private entitlementStale(token: { entitlement_version?: string }): boolean {
+    return (
+      this.entitlementMode === "enforce_versioned" &&
+      token.entitlement_version !== undefined &&
+      token.entitlement_version !== this.store.entitlements?.version
     );
   }
 
@@ -235,14 +253,47 @@ export class ContinuumEngine {
     const ctx = this.buildContext(intent, candidates, nowMs);
 
     const t0 = globalThis.performance.now();
-    const decision = runAuthorize(ctx);
+    const baseDecision = runAuthorize(ctx);
+
+    // Intervention I1 (opt-in): intersect the self-declared request with the
+    // principal's entitlement ceiling. Off ⇒ decision is the base decision,
+    // byte-identical to the frozen baseline.
+    const objectsById = new Map(candidates.map((c) => [c.memory_id, c]));
+    let effScope: EffectiveScope | null = null;
+    let decision = baseDecision;
+    if (this.entitlementMode !== "off" && this.store.entitlements) {
+      effScope = computeEffectiveScope(
+        this.store.entitlements,
+        intent.actor_id,
+        intent.requested_operations,
+      );
+      const effOps = new Set(effScope.effective_scope);
+      const permittedIds = baseDecision.permitted_ids.filter((id) => {
+        const op = objectsById.get(id)?.read_operation;
+        return op !== undefined && effOps.has(op);
+      });
+      decision = {
+        ...baseDecision,
+        permitted_ids: permittedIds,
+        object_decisions: baseDecision.object_decisions.map((d) =>
+          permittedIds.includes(d.memory_id)
+            ? d
+            : d.permit
+              ? {
+                  ...d,
+                  permit: false,
+                  denied_reason: `entitlement_ceiling: operation '${objectsById.get(d.memory_id)?.read_operation}' not entitled for ${intent.actor_id}`,
+                }
+              : d,
+        ),
+      };
+    }
     this.authzLatencies.push(globalThis.performance.now() - t0);
 
     this.authorizationsCount += 1;
     this.permits += decision.permitted_ids.length;
     this.denies += decision.candidate_count - decision.permitted_ids.length;
 
-    const objectsById = new Map(candidates.map((c) => [c.memory_id, c]));
     const disclosure = computeDisclosure(decision, objectsById);
     if (disclosure.disclosed_count > 0) {
       this.recordDisclosureReduction(disclosure.reduction_vs_naive);
@@ -267,7 +318,7 @@ export class ContinuumEngine {
           intentId: intent.intent_id,
           purpose: intent.purpose,
           audience: intent.model_id ?? "continuum-model-gateway",
-          operations: intent.requested_operations,
+          operations: effScope ? effScope.effective_scope : intent.requested_operations,
           resources: decision.permitted_ids,
           maximumDisclosure: decision.permitted_ids.length,
           dataClassification: intent.constraints.maximum_data_classification,
@@ -279,6 +330,12 @@ export class ContinuumEngine {
           evidenceCorrelationId: correlation,
           nowMs,
           ttlSeconds: this.store.config.capability_ttl_seconds,
+          ...(effScope
+            ? {
+                entitlementVersion: this.store.entitlements!.version,
+                entitlementDigest: entitlementDigest(this.store.entitlements!),
+              }
+            : {}),
         },
         this.store.platform.privateKeyPem,
       );
@@ -300,6 +357,19 @@ export class ContinuumEngine {
       disclosure_digest: disclosure.disclosure_digest,
       trace_id: correlation,
       nowMs,
+      ...(effScope
+        ? {
+            scope: {
+              requested_scope: effScope.requested_scope,
+              principal_scope: effScope.principal_scope,
+              delegated_scope: effScope.delegated_scope,
+              effective_scope: effScope.effective_scope,
+              denied_scope_elements: effScope.denied_scope_elements,
+              entitlement_version: this.store.entitlements!.version,
+              entitlement_digest: entitlementDigest(this.store.entitlements!),
+            },
+          }
+        : {}),
     });
 
     if (capability) {
@@ -361,6 +431,17 @@ export class ContinuumEngine {
       audience: null,
       pop,
     });
+
+    // I1-C: reject a live capability whose entitlement version has since rotated.
+    if (verification.valid && this.entitlementStale(signed.token)) {
+      verification.valid = false;
+      verification.checks.push({
+        name: "entitlement_current",
+        satisfied: false,
+        detail: `entitlement rotated (issued ${signed.token.entitlement_version}, now ${this.store.entitlements?.version})`,
+      });
+      verification.denied_reason = "entitlement_current: entitlement revoked/rotated since issuance";
+    }
 
     this.canaryTrials += 1;
     let disclosure: DisclosurePackage | null = null;
@@ -440,6 +521,12 @@ export class ContinuumEngine {
       audience: null,
       pop,
     });
+
+    // I1-C: reject a live capability whose entitlement version has since rotated.
+    if (verification.valid && this.entitlementStale(signed.token)) {
+      verification.valid = false;
+      verification.denied_reason = "entitlement_current: entitlement revoked/rotated since issuance";
+    }
 
     if (!verification.valid) {
       const denied: ModelCallResult = {

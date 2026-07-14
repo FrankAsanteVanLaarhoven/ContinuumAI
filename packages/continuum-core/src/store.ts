@@ -20,6 +20,7 @@ import {
 import type {
   ApprovedRegistry,
   ConsentRecord,
+  EntitlementPolicy,
   MemoryObject,
   PolicyConfig,
   Principal,
@@ -37,6 +38,9 @@ export interface Store {
   config: PolicyConfig;
   gateway: ModelGatewayConfig;
   platform: Ed25519Keypair;
+  /** Authoritative entitlement ceiling (intervention I1). Optional: consulted
+   *  only when the engine runs in an entitlement-enforcing mode. */
+  entitlements?: EntitlementPolicy;
 }
 
 const PURPOSE = "supplier_quote_comparison";
@@ -375,6 +379,36 @@ export function createSeededStore(): Store {
     gbp_per_1k_tokens: 0.5,
   };
 
+  // Authoritative entitlement ceiling (intervention I1). The procurement agent is
+  // entitled ONLY to its legitimate procurement operations — NOT read:source_code,
+  // which is why its self-declared scope escalation (GAP-1) succeeds today and
+  // must be denied once entitlements are enforced.
+  const entitlements: EntitlementPolicy = {
+    version: "entitlements-2026.07.0",
+    entitlements: [
+      {
+        principal_id: "spiffe://acme.ai/agents/procurement-agent",
+        tenant_id: "t_acme",
+        allowed_operations: [
+          "read:supplier_quotes",
+          "read:approved_budget_band",
+          "write:recommendation_draft",
+        ],
+        delegated_operations: [
+          "read:supplier_quotes",
+          "read:approved_budget_band",
+          "write:recommendation_draft",
+        ],
+      },
+      {
+        principal_id: "spiffe://globex.health/agents/billing-agent",
+        tenant_id: "t_globex",
+        allowed_operations: ["read:supplier_quotes"],
+        delegated_operations: ["read:supplier_quotes"],
+      },
+    ],
+  };
+
   return {
     tenants,
     principals,
@@ -385,6 +419,7 @@ export function createSeededStore(): Store {
     config,
     gateway,
     platform,
+    entitlements,
   };
 }
 

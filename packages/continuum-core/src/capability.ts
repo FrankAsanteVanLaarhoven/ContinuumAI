@@ -36,6 +36,10 @@ export interface SovereignCapabilityToken {
   nonce: string;
   revocation_handle: string;
   evidence_correlation_id: string;
+  /** Intervention I1 — bound entitlement version/digest. Absent unless an
+   *  entitlement-enforcing mode issued the token (keeps default signatures identical). */
+  entitlement_version?: string;
+  entitlement_digest?: string;
 }
 
 export interface SignedSCT {
@@ -64,6 +68,9 @@ export interface IssueParams {
   evidenceCorrelationId: string;
   nowMs: number;
   ttlSeconds: number;
+  /** Optional entitlement binding (intervention I1). */
+  entitlementVersion?: string;
+  entitlementDigest?: string;
 }
 
 /** Issue and sign a capability token. */
@@ -97,6 +104,12 @@ export function issueSCT(
     revocation_handle: `rev_${randomUUID()}`,
     evidence_correlation_id: params.evidenceCorrelationId,
   };
+  // Assign the entitlement binding ONLY when present, so a token issued without
+  // I1 has no such keys and its canonical form (and signature) is unchanged.
+  if (params.entitlementVersion !== undefined && params.entitlementDigest !== undefined) {
+    token.entitlement_version = params.entitlementVersion;
+    token.entitlement_digest = params.entitlementDigest;
+  }
   const signature = signEd25519(platformPrivateKeyPem, canonicalJson(token));
   return { token, signature };
 }

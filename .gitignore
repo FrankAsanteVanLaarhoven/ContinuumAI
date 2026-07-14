@@ -28,6 +28,7 @@ research/sif-bench/stage_b/reports/
 research/sif-bench/stage_b/manifests/
 research/sif-bench/concurrency/reports/
 research/sif-bench/concurrency/manifests/
+research/sif-bench/interventions/*/report.json
 
 # Rust (reserved security-core, deferred)
 security-core/**/target/
