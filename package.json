@@ -9,7 +9,8 @@
   "workspaces": [
     "packages/*",
     "apps/*",
-    "research/sif-bench/concurrency"
+    "research/sif-bench/concurrency",
+    "research/sif-bench/interventions/i5"
   ],
   "engines": {
     "node": ">=22"
@@ -24,6 +25,7 @@
     "sif-bench:concurrency": "npm run test -w @continuum/sif-concurrency",
     "intervention:i1": "npm run test -w @continuum/core -- src/interventions/i1.test.ts",
     "intervention:i2": "npm run test -w @continuum/core -- src/interventions/i2.test.ts",
+    "intervention:i5": "npm run test -w @continuum/sif-i5",
     "build": "npm run build --workspaces --if-present",
     "dev": "npm run dev -w @continuum/console",
     "verify": "npm run typecheck && npm run test"
