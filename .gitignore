@@ -32,6 +32,9 @@ research/sif-bench/interventions/*/report.json
 research/sif-bench/interventions/i6/reports/
 research/sif-bench/interventions/i6/manifests/
 research/sif-bench/comparative/reports/
+# Operator secrets: exact model identities / regions / digests live ONLY here, never committed
+research/sif-bench/comparative/operator.local.json
+**/operator.local.json
 
 # Rust (reserved security-core, deferred)
 security-core/**/target/

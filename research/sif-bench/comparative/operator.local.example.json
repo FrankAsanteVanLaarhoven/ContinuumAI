@@ -1,0 +1,111 @@
+{
+  "_README": "TEMPLATE ONLY. Copy to operator.local.json (gitignored) and pin real values under review. Vendor-neutral by design: exact model identities never enter the committed repo. This example FAILS CLOSED.",
+  "slots": [
+    {
+      "slot": "A",
+      "role": "Strong remote instruction-following model",
+      "hosting_class": "REMOTE_ZERO_RETENTION",
+      "model_id": "PIN: exact remote model id (family A)",
+      "revision": "PIN: exact snapshot/revision",
+      "artifact_digest": null,
+      "runtime_version": "PIN: exact API version",
+      "serving_framework": "remote-api",
+      "quantization": null,
+      "context_window": null,
+      "region": "PIN_AFTER_ACCOUNT_VERIFICATION",
+      "endpoint_class": "PIN: endpoint class",
+      "date_accessed": "PIN: ISO date",
+      "prompt_retained": null,
+      "used_for_training": null,
+      "sampling": {
+        "temperature": 0.7,
+        "top_p": 1.0,
+        "top_k": null,
+        "max_output_tokens": 768,
+        "frequency_penalty": null,
+        "presence_penalty": null,
+        "stop": [],
+        "reasoning_effort": null,
+        "tool_choice": "auto",
+        "response_format": "json",
+        "seed_reproducibility": "requested_only"
+      }
+    },
+    {
+      "slot": "B",
+      "role": "Different remote model family / architecture",
+      "hosting_class": "REMOTE_ZERO_RETENTION",
+      "model_id": "PIN: exact remote model id (family B)",
+      "revision": "PIN: exact model id/revision",
+      "artifact_digest": null,
+      "runtime_version": "PIN: exact API version",
+      "serving_framework": "remote-api",
+      "quantization": null,
+      "context_window": null,
+      "region": "PIN_AFTER_ENDPOINT_VERIFICATION",
+      "endpoint_class": "PIN: endpoint class",
+      "date_accessed": "PIN: ISO date",
+      "prompt_retained": null,
+      "used_for_training": null,
+      "sampling": {
+        "temperature": 0.7,
+        "top_p": 1.0,
+        "top_k": null,
+        "max_output_tokens": 768,
+        "frequency_penalty": null,
+        "presence_penalty": null,
+        "stop": [],
+        "reasoning_effort": null,
+        "tool_choice": "auto",
+        "response_format": "json",
+        "seed_reproducibility": "requested_only"
+      }
+    },
+    {
+      "slot": "C",
+      "role": "Local / private open-weight model",
+      "hosting_class": "LOCAL_PRIVATE",
+      "model_id": "PIN: local model repo",
+      "revision": "EXACT_COMMIT_SHA_REQUIRED",
+      "artifact_digest": "REQUIRED_AFTER_DOWNLOAD (sha256)",
+      "runtime_version": "EXACT_RUNTIME_GIT_SHA_REQUIRED",
+      "serving_framework": "PIN: local runtime",
+      "quantization": "PIN: quantization",
+      "context_window": null,
+      "region": "local-owner-controlled",
+      "endpoint_class": "local",
+      "date_accessed": "PIN: ISO date",
+      "prompt_retained": false,
+      "used_for_training": false,
+      "sampling": {
+        "temperature": 0.7,
+        "top_p": 1.0,
+        "top_k": 40,
+        "max_output_tokens": 768,
+        "frequency_penalty": null,
+        "presence_penalty": null,
+        "stop": [],
+        "reasoning_effort": null,
+        "tool_choice": "auto",
+        "response_format": "json",
+        "seed_reproducibility": "requested_only"
+      }
+    }
+  ],
+  "budget": {
+    "max_input_tokens": 3564000,
+    "max_output_tokens": 456192,
+    "max_cost_usd": 60,
+    "max_gpu_hours": 10,
+    "max_wall_clock_hours": 12,
+    "failure_allowance_pct": 10
+  },
+  "prompt_surface_hash": "PIN_TO_449d0272500e2909e8c5db7834bcdc7f5aee0a1fdbbf81105d546d239aa8b3c8",
+  "kill_switch": "engaged",
+  "verification": {
+    "reviewer_signoff": false,
+    "artifacts_verified": false,
+    "synthetic_data_verified": false,
+    "slots_qualified": { "A": false, "B": false, "C": false }
+  }
+}
