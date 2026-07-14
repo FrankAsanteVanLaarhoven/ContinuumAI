@@ -60,6 +60,9 @@ lives at the package root as the brief's tree prescribes.
 - no valid control (sequential or concurrent) false-fails — permitted
   concurrency is not refused;
 - the run is reproducible from the fixed seed (deterministic verdicts);
+- the run is **wall-clock-independent** — every intended-live operation is
+  evaluated against the benchmark's logical clock, not the host `Date.now()`
+  (baseline v0.2 correction; regression: `src/wallclock.test.ts`);
 - the frozen Stage A baseline is unchanged.
 
 Security outcomes — including the 10 documented gaps — are **recorded**, not

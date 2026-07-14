@@ -12,6 +12,46 @@ Reproduce (boots embedded PostgreSQL; writes `reports/concurrency.json`):
 npm run sif-bench:concurrency
 ```
 
+## Benchmark version history
+
+```
+Concurrency baseline v0.1
+  Status : INVALIDATED for C1 wall-clock coupling (not reproducible)
+  Commit : df5e862
+  Reason : capabilities issued at the fixed logical clock (2026-07-14T12:00:00Z,
+           90s TTL) but the C1 disclose/callModel controls evaluated at the host
+           wall clock (Date.now()). A run more than 90s after the issuance
+           timestamp expired the capability, so the C1 valid controls false-failed
+           and the expiry-maskable probes (C1-02/03/05/11) were hidden by an
+           earlier expiry denial. v0.1's numbers below are correct ONLY when run
+           before issuance-time + TTL (as originally captured); they silently
+           degrade otherwise.
+
+Concurrency baseline v0.2
+  Status : CORRECTED — authoritative for the bounded deterministic schedule
+  Commit : <this correction commit>
+  Change : the benchmark's logical NOW is injected into every intended-live C1
+           disclose/callModel; the deliberate expiry case (C1-08) alone keeps an
+           explicitly advanced timestamp. A wall-clock-independence regression
+           (`src/wallclock.test.ts`) runs C1 at host clocks an hour, a day, a year
+           and a day-before away and asserts identical verdicts.
+```
+
+The initial C1 baseline unintentionally evaluated fixed-time capabilities against
+the host wall clock. Runs performed more than 90 seconds after the fixed issuance
+timestamp caused valid controls to expire and masked several intended TOCTOU
+probes. The harness was corrected by injecting the benchmark's logical clock into
+all intended-live C1 operations; the explicit expiry case remained unchanged. **No
+control-plane logic, capability TTL, revocation semantics, or verification code was
+modified — only the benchmark's time source.** The corrected harness re-exposes
+`C1-02`, `C1-03`, `C1-05` and `C1-11`, which had been masked by accidental
+capability expiry in later wall-clock runs; the corrected totals (10 gaps, RESR
+0.208, 0 false-failures) match v0.1's originally-captured numbers and are now
+reproducible at any host time. The system did not change — measurement validity
+improved.
+
+The numbers below are the **v0.2 corrected** result.
+
 ## Sample context (required for every "zero observed")
 
 - **100 records** total: **48 adversarial** cases (12 per family C1–C4), **52
@@ -26,7 +66,7 @@ npm run sif-bench:concurrency
 Independent security findings : 6   (GAP-1 … GAP-6)
 Reproducible failing fixtures : 10  (adversarial cases classified "gap")
 Concurrency test families     : 4   (C1–C4)
-Concurrency suite tests       : 6
+Concurrency suite tests       : 9   (6 baseline + 3 wall-clock-independence regression)
 ```
 
 The 10 failing fixtures map onto the 6 findings: GAP-3 (staleness) accounts for

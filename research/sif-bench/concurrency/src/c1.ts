@@ -7,7 +7,7 @@
  * (signature / expiry / revocation / PoP) versus what it does not (consent,
  * policy version, object lifecycle, the intent).
  */
-import { clone, INTENT_INPUT, authorized, holderPop, directVerify, mkRecord, nowPerf } from "./harness";
+import { clone, INTENT_INPUT, NOW, authorized, holderPop, directVerify, mkRecord, nowPerf } from "./harness";
 import type { Outcome, FailureClass, ResultRecord } from "./records";
 
 interface Adv {
@@ -23,7 +23,9 @@ interface Adv {
 function seqControl(caseId: string): ResultRecord {
   const a = authorized();
   const t0 = nowPerf();
-  const d = a.engine.disclose(a.cap.token.token_id, "seq", undefined);
+  // Intended-live: evaluate against the benchmark's logical clock, never the host
+  // wall clock — otherwise a run past issuance-time + TTL measures expiry, not the race.
+  const d = a.engine.disclose(a.cap.token.token_id, "seq", NOW);
   return mkRecord({
     case_id: caseId, family: "C1", control: "sequential_valid", worker_count: 1,
     description: "sequential authorize→disclose of a live capability",
@@ -40,8 +42,8 @@ function seqControl(caseId: string): ResultRecord {
 function concControl(caseId: string): ResultRecord {
   const a = authorized();
   const t0 = nowPerf();
-  const d1 = a.engine.disclose(a.cap.token.token_id, "conc-1");
-  const d2 = a.engine.disclose(a.cap.token.token_id, "conc-2");
+  const d1 = a.engine.disclose(a.cap.token.token_id, "conc-1", NOW);
+  const d2 = a.engine.disclose(a.cap.token.token_id, "conc-2", NOW);
   const ok = d1.verification.valid && d2.verification.valid;
   return mkRecord({
     case_id: caseId, family: "C1", control: "concurrent_valid", worker_count: 2,
@@ -65,7 +67,7 @@ const ADVERSARIAL: Record<string, () => Adv> = {
   "C1-02-policy-ceiling-change-after-permit": () => {
     const a = authorized();
     a.engine.store.config.risk_threshold = 0; // a NEW authorize would now deny (risk 0.12 > 0)
-    const d = a.engine.disclose(a.cap.token.token_id, "adv");
+    const d = a.engine.disclose(a.cap.token.token_id, "adv", NOW);
     return {
       expected: "held", observed: d.verification.valid ? "gap" : "held",
       failure_class: d.verification.valid ? "stale_permit_acceptance" : "none",
@@ -77,7 +79,7 @@ const ADVERSARIAL: Record<string, () => Adv> = {
   "C1-03-consent-revoked-after-selection": () => {
     const a = authorized();
     a.engine.store.consent[0]!.granted = false; // owner withdraws consent post-issuance
-    const d = a.engine.disclose(a.cap.token.token_id, "adv");
+    const d = a.engine.disclose(a.cap.token.token_id, "adv", NOW);
     return {
       expected: "held", observed: d.verification.valid ? "gap" : "held",
       failure_class: d.verification.valid ? "stale_permit_acceptance" : "none",
@@ -91,7 +93,7 @@ const ADVERSARIAL: Record<string, () => Adv> = {
     // mutate the stored intent's purpose; the capability's purpose is immutable
     const intent = a.engine.getIntent(a.intentId) as { purpose: string } | null;
     if (intent) intent.purpose = "payroll_run";
-    const d = a.engine.disclose(a.cap.token.token_id, "adv");
+    const d = a.engine.disclose(a.cap.token.token_id, "adv", NOW);
     return {
       expected: "held", observed: d.verification.valid ? "held" : "false_failure",
       failure_class: "none",
@@ -103,7 +105,7 @@ const ADVERSARIAL: Record<string, () => Adv> = {
   "C1-05-use-after-policy-version-change": () => {
     const a = authorized();
     a.engine.store.config.policy_version = "policy-2026.99.0-rotated";
-    const d = a.engine.disclose(a.cap.token.token_id, "adv");
+    const d = a.engine.disclose(a.cap.token.token_id, "adv", NOW);
     return {
       expected: "held", observed: d.verification.valid ? "gap" : "held",
       failure_class: d.verification.valid ? "policy_version_mismatch" : "none",
@@ -131,7 +133,7 @@ const ADVERSARIAL: Record<string, () => Adv> = {
     const a = authorized();
     const t0 = nowPerf();
     a.engine.revoke(a.cap.token.revocation_handle);
-    const d = a.engine.disclose(a.cap.token.token_id, "adv");
+    const d = a.engine.disclose(a.cap.token.token_id, "adv", NOW);
     return {
       expected: "held", observed: d.verification.valid ? "gap" : "held",
       failure_class: d.verification.valid ? "post_revocation_disclosure" : "none",
@@ -143,7 +145,7 @@ const ADVERSARIAL: Record<string, () => Adv> = {
   "C1-08-expiry-during-gateway-execution": () => {
     const a = authorized();
     const ttl = a.engine.store.config.capability_ttl_seconds;
-    const expiredMs = Date.parse("2026-07-14T12:00:00.000Z") + ttl * 1000 + 1;
+    const expiredMs = NOW + ttl * 1000 + 1; // deliberately advanced: the ONLY C1 case that tests expiry
     const r = a.engine.callModel(a.cap.token.token_id, { agentPrompt: "compare quotes" }, expiredMs);
     return {
       expected: "held", observed: r.allowed ? "gap" : "held",
@@ -155,8 +157,8 @@ const ADVERSARIAL: Record<string, () => Adv> = {
   },
   "C1-09-replay-two-workers": () => {
     const a = authorized();
-    const d1 = a.engine.disclose(a.cap.token.token_id, "w1");
-    const d2 = a.engine.disclose(a.cap.token.token_id, "w2");
+    const d1 = a.engine.disclose(a.cap.token.token_id, "w1", NOW);
+    const d2 = a.engine.disclose(a.cap.token.token_id, "w2", NOW);
     const both = d1.verification.valid && d2.verification.valid;
     return {
       expected: "held", observed: both ? "held" : "false_failure",
@@ -184,7 +186,7 @@ const ADVERSARIAL: Record<string, () => Adv> = {
     const a = authorized();
     const obj = a.engine.store.memory.get("mem_q_apex");
     if (obj) obj.revocation_state = "revoked"; // object revoked AFTER authorization
-    const d = a.engine.disclose(a.cap.token.token_id, "adv");
+    const d = a.engine.disclose(a.cap.token.token_id, "adv", NOW);
     const released = d.disclosure?.disclosed.some((o) => o.memory_id === "mem_q_apex") ?? false;
     return {
       expected: "held", observed: released ? "gap" : "held",
@@ -198,7 +200,7 @@ const ADVERSARIAL: Record<string, () => Adv> = {
     const a = authorized();
     const intent = a.engine.getIntent(a.intentId) as { tenant_id: string } | null;
     if (intent) intent.tenant_id = "t_globex";
-    const d = a.engine.disclose(a.cap.token.token_id, "adv");
+    const d = a.engine.disclose(a.cap.token.token_id, "adv", NOW);
     const stillAcme = a.cap.token.tenant_id === "t_acme" && d.verification.valid;
     return {
       expected: "held", observed: stillAcme ? "held" : "false_failure",

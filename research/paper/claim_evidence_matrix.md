@@ -54,7 +54,15 @@ paper's claim strength, subordinate to [`../../docs/CLAIMS.md`](../../docs/CLAIM
   ≤ 2 workers, real PostgreSQL for the durable races. Records both held results
   and 10 reproducible failing fixtures spanning the six gap classes (GAP-1..6).
   Not a randomized-schedule fuzzer; "zero observed" carries this sample context,
-  not a proof of concurrency safety.
+  not a proof of concurrency safety. **Harness correction (concurrency baseline
+  v0.2):** the original C1 controls (`df5e862`) evaluated fixed-time capabilities
+  against the host wall clock, so runs later than issuance-time + 90s TTL
+  false-failed the valid controls and masked `C1-02/03/05/11`; the harness now
+  injects the benchmark's logical clock into every intended-live C1 operation
+  (deliberate expiry case unchanged) with a wall-clock-independence regression.
+  The corrected totals (10 gaps, RESR 0.208, 0 false-failures) match the
+  originally-captured numbers and are now reproducible at any host time — the
+  control plane and its TTL/verification logic were not changed.
 - **Stage B measured (v0.2)** — measured against the corpus-driven adversarial
   suite (`research/sif-bench/stage_b/STAGE_B_FINDINGS.md`) with **no live model**:
   prompt-injection figures are screen permeability (an upper bound on real attack
