@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://continuum/sif-bench/concurrency/result.schema.json",
+  "title": "SIF-Bench concurrency result record",
+  "description": "One record per case (adversarial or valid control). Every field the brief requires for reproducibility and sample context.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_id", "family", "control", "seed", "scheduler", "interleaving",
+    "git_commit", "protocol_version", "policy_version", "db_schema_version",
+    "worker_count", "isolation_level", "started_at", "ended_at",
+    "expected_outcome", "observed_outcome", "failure_class", "latency_ms", "ids", "detail"
+  ],
+  "properties": {
+    "case_id": { "type": "string" },
+    "family": { "enum": ["C1", "C2", "C3", "C4"] },
+    "control": { "enum": ["sequential_valid", "concurrent_valid", "adversarial"] },
+    "description": { "type": "string" },
+    "seed": { "type": "integer" },
+    "scheduler": { "type": "string", "description": "barrier | latch | ordered-interleave | pool-max-1 | sequential | concurrent" },
+    "interleaving": { "type": "array", "items": { "type": "string" }, "description": "observed step order — the witness" },
+    "git_commit": { "type": "string" },
+    "protocol_version": { "type": "string" },
+    "policy_version": { "type": "string" },
+    "db_schema_version": { "type": "string" },
+    "worker_count": { "type": "integer" },
+    "isolation_level": { "type": "string" },
+    "started_at": { "type": "string" },
+    "ended_at": { "type": "string" },
+    "expected_outcome": { "enum": ["held", "valid_pass", "gap", "false_failure", "not_realizable"] },
+    "observed_outcome": { "enum": ["held", "valid_pass", "gap", "false_failure", "not_realizable"] },
+    "failure_class": { "type": "string" },
+    "latency_ms": { "type": "number" },
+    "ids": {
+      "type": "object",
+      "properties": {
+        "intent_id": { "type": ["string", "null"] },
+        "capability_id": { "type": ["string", "null"] },
+        "action_id": { "type": ["string", "null"] },
+        "evidence_head": { "type": ["string", "null"] },
+        "event_ids": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "detail": { "type": "string" }
+  }
+}

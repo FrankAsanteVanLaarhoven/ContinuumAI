@@ -1,0 +1,14 @@
+{
+  "case_id": "C3-08-durable-inmemory-divergence",
+  "family": "C3",
+  "control": "adversarial",
+  "seed": 12648430,
+  "scheduler": "concurrent",
+  "interleaving": [
+    "in-memory:listMeta(globex)",
+    "durable:acme-read"
+  ],
+  "expected_outcome": "held",
+  "observed_outcome": "gap",
+  "failure_class": "durable_inmemory_divergence"
+}

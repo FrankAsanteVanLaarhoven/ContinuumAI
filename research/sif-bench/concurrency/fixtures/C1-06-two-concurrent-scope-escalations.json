@@ -1,0 +1,14 @@
+{
+  "case_id": "C1-06-two-concurrent-scope-escalations",
+  "family": "C1",
+  "control": "adversarial",
+  "seed": 12648430,
+  "scheduler": "ordered-interleave",
+  "interleaving": [
+    "w1:authorize",
+    "w2:authorize"
+  ],
+  "expected_outcome": "held",
+  "observed_outcome": "gap",
+  "failure_class": "scope_escalation"
+}

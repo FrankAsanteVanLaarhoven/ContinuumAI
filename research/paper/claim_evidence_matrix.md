@@ -15,8 +15,8 @@ paper's claim strength, subordinate to [`../../docs/CLAIMS.md`](../../docs/CLAIM
 |----------------|-------------------|----------------|
 | Intent-bound access reduces over-disclosure | baseline comparison over multiple workloads | Not established. Stage B (v0.2) caveat: because `requested_operations` is agent-declared, an object protected **only** by scope was extracted via a crafted intent (GAP-1); purpose+consent-protected objects held. Scope alone is not a barrier against the intent's author |
 | Holder binding prevents token replay | replay attack experiments | Stage A adversarial (v0.2): deterministic — bearer reuse, forged proof-of-possession, expiry, scope/tenant tamper and audience confusion all blocked at the expected check; concurrency/timing not yet exercised |
-| Revocation terminates active authority | persistent concurrent revocation tests | Stage A adversarial (v0.2): in-session reuse-after-revoke deterministically blocked; persistent + concurrent revocation still pending (durable revocation is the separate persistence arm) |
-| Human gates prevent unauthorized execution | bypass and race-condition suite | Stage A adversarial (v0.2): agent self-approval, impostor-agent, cross-tenant, unknown-approver and denied-action approval all blocked; a prior self-approval gap was closed; race-condition/concurrency suite still pending |
+| Revocation terminates active authority | persistent concurrent revocation tests | Stage A adversarial (v0.2): in-session reuse-after-revoke deterministically blocked. Concurrency baseline: point-of-use **capability** revocation and expiry held under the tested interleavings (0 post-revocation disclosures), but authorization is a snapshot — consent/policy/object-lifecycle changes are NOT re-evaluated against a live capability within its TTL (GAP-3). Durable revocation is the separate persistence arm |
+| Human gates prevent unauthorized execution | bypass and race-condition suite | Stage A adversarial (v0.2): agent self-approval, impostor-agent, cross-tenant, unknown-approver and denied-action approval all blocked; a prior self-approval gap was closed. Concurrency baseline (C2): double-execution, duplicate/foreign-tenant approval, and approving a denied action all refused under the tested race; illegal state skips rejected. Gaps: an approved action is not re-validated against a rotated policy at execution (GAP-3), and client-supplied action ids are not idempotent (GAP-6) |
 | Context broker preserves utility | task success vs disclosure analysis | Not established |
 | Evidence chain enables reconstruction | restart, tamper and restore experiments | Database-enforced (v0.1) + Stage A adversarial (v0.2): re-verifies after a fresh connection and a logical restore; four in-process tamper classes (content, link, re-sign, splice) each detected at the expected seq; full physical restart/pg_restore still pending |
 | Tenant isolation holds | database, cache, vector and backup tests | Database RLS-enforced (v0.1): direct-query, missing-context, forged-id and evidence isolation tested. Stage B (v0.2): cross-tenant object **content** held under crafted intents, but the in-memory engine's `listMemoryMeta(tenantId)` read accessor is **not caller-bound** and enumerated a foreign object id (GAP-2) — isolation of in-memory metadata currently depends on the API layer; the durable RLS path enforces it independently. cache/vector/full-backup isolation pending |
@@ -48,6 +48,12 @@ paper's claim strength, subordinate to [`../../docs/CLAIMS.md`](../../docs/CLAIM
   positive controls guarding against over-blocking. It is single-process and
   deterministic: it does **not** establish concurrency/timing, persistence-tier,
   or any model/corpus behaviour.
+- **Concurrency baseline (v0.2)** — measured by the SIF-Bench concurrency /
+  TOCTOU suite (`research/sif-bench/concurrency/CONCURRENCY_BASELINE.md`) against
+  the unmodified system: one deterministic schedule per case, seed `0xC0FFEE`,
+  ≤ 2 workers, real PostgreSQL for the durable races. Records both held results
+  and 10 gaps (GAP-1..6). Not a randomized-schedule fuzzer; "zero observed"
+  carries this sample context, not a proof of concurrency safety.
 - **Stage B measured (v0.2)** — measured against the corpus-driven adversarial
   suite (`research/sif-bench/stage_b/STAGE_B_FINDINGS.md`) with **no live model**:
   prompt-injection figures are screen permeability (an upper bound on real attack

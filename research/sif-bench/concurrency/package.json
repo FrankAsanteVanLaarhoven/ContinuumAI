@@ -1,0 +1,25 @@
+{
+  "name": "@continuum/sif-concurrency",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SIF-Bench concurrency / time-of-check-time-of-use baseline: measures the unmodified control plane under deterministic concurrent interleavings.",
+  "author": "Frank Asante Van Laarhoven <frankleroyvan@gmail.com>",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@continuum/core": "*",
+    "@continuum/persistence": "*",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/pg": "^8.11.10",
+    "embedded-postgres": "18.4.0-beta.17",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}

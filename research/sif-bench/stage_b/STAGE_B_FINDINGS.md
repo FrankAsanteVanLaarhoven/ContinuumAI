@@ -119,10 +119,19 @@ the referenced RLS suite; or that the held cases hold under a live model. Zero
 observed exfiltration is **not** proof of impossibility. See
 [`../../../docs/CLAIMS.md`](../../../docs/CLAIMS.md).
 
+## Update — concurrency baseline landed
+
+The concurrency / TOCTOU suite has since measured the unmodified system
+(`../concurrency/CONCURRENCY_BASELINE.md`). **GAP-1 and GAP-2 reproduce under
+concurrency** (`C1-06`, `C3-08`), and four further gaps were surfaced (GAP-3
+authorization staleness, GAP-4 PoP replay, GAP-5 app-cooperative RLS re-key,
+GAP-6 no idempotency). Point-of-use revocation/expiry, double-execution
+prevention, durable tenant isolation, and append-only evidence held under the
+tested interleavings.
+
 ## Next
 
-1. Concurrency / TOCTOU suite (approve-vs-revoke, expiry races, nonce reuse,
-   pooled tenant-context reuse) — before the baselines.
+1. ~~Concurrency / TOCTOU suite~~ — **done** (baseline frozen, not remediated).
 2. Defence interventions, each measured against this before-picture: instruction/
    data separation (arm C/D), decode+normalise screening, agent-entitlement
    binding for GAP-1, caller-bound read accessors for GAP-2.

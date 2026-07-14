@@ -26,6 +26,8 @@ venv/
 research/**/results/*.json
 research/sif-bench/stage_b/reports/
 research/sif-bench/stage_b/manifests/
+research/sif-bench/concurrency/reports/
+research/sif-bench/concurrency/manifests/
 
 # Rust (reserved security-core, deferred)
 security-core/**/target/

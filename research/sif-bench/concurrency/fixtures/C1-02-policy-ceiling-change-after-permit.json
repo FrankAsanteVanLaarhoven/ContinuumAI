@@ -1,0 +1,15 @@
+{
+  "case_id": "C1-02-policy-ceiling-change-after-permit",
+  "family": "C1",
+  "control": "adversarial",
+  "seed": 12648430,
+  "scheduler": "ordered-interleave",
+  "interleaving": [
+    "authorize",
+    "adversary:tighten-policy",
+    "disclose"
+  ],
+  "expected_outcome": "held",
+  "observed_outcome": "gap",
+  "failure_class": "stale_permit_acceptance"
+}

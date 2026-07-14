@@ -1,0 +1,15 @@
+{
+  "case_id": "C1-10-pop-replay-simultaneous",
+  "family": "C1",
+  "control": "adversarial",
+  "seed": 12648430,
+  "scheduler": "ordered-interleave",
+  "interleaving": [
+    "capture-pop",
+    "verify#1",
+    "verify#2(replay)"
+  ],
+  "expected_outcome": "held",
+  "observed_outcome": "gap",
+  "failure_class": "pop_replay"
+}

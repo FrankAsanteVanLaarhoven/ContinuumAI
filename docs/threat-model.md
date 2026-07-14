@@ -54,3 +54,32 @@ assumptions above. The model-gateway injection screening is **pattern-based and
 heuristic** — it raises cost and catches known patterns; it is not a complete
 defence against adversarially-crafted injection, and the model itself is
 simulated. See `docs/CLAIMS.md`.
+
+## Open gaps under adversarial measurement (not yet remediated)
+
+Surfaced by SIF-Bench Stage B and the concurrency baseline; recorded so the
+boundary is honest, and to be fixed as separately-measured interventions:
+
+- **GAP-1** — scope is agent-declared, so an object protected only by scope is
+  extractable via a crafted intent (Stage B `EX-SCOPE-001`, concurrency `C1-06`).
+- **GAP-2** — the in-memory `listMemoryMeta(tenantId)` accessor is not
+  caller-bound and can enumerate foreign object ids; the durable RLS path enforces
+  isolation independently (Stage B `EX-XTENANTID-001`, concurrency `C3-08`).
+- **GAP-3** — authorization is a snapshot: an issued capability (and an approved
+  action) is re-checked at point of use for signature/expiry/revocation/PoP but
+  **not** for consent, policy version, or object lifecycle within its TTL/gate
+  window (concurrency `C1-02/03/05/11`, `C2-06`). Point-of-use revocation and
+  expiry **are** enforced.
+- **GAP-4** — a captured proof-of-possession `(challenge, signature)` is
+  replayable within the TTL; challenge freshness/single-use is not enforced
+  (`C1-10`).
+- **GAP-5** — RLS isolation is app-cooperative: the `continuum_app` role may
+  re-key `app.current_tenant` mid-transaction via `set_config`; nothing at the DB
+  privilege layer prevents it (`C3-06`).
+- **GAP-6** — no idempotency on client-supplied action ids; a reused id
+  overwrites rather than deduplicates (`C2-11`).
+
+Held under the tested interleavings (bounded, seed `0xC0FFEE`, ≤ 2 workers):
+post-revocation disclosure 0, human-gate bypass 0, cross-tenant observation 0,
+duplicate execution 0, chain-fork 0, append-only enforced. See
+`research/sif-bench/concurrency/CONCURRENCY_BASELINE.md`.
