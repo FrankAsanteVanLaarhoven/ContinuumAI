@@ -28,10 +28,17 @@ Milestone — plus a Foundry-style operations console over it.
 | Layer | Where | Status |
 |-------|-------|--------|
 | Control-plane core (policy, capability, broker, model gateway, evidence, action) | `packages/continuum-core` | 27 tests green, strict TS |
+| Durable data plane (PostgreSQL + row-level-security isolation) | `packages/continuum-persistence` | 14 tests green (real embedded Postgres) |
 | Operations console (Palantir/Foundry aesthetic) | `apps/console` | Next.js 15, live |
 | Benchmark harness | `research/sif-bench` | 11/11 gates, stdlib-only |
+| Research paper (stable components) | `research/paper` | problem, hypotheses, RQs, protocol, claim-evidence matrix |
 | Protocol schemas (CIP-002/004/007 + index) | `protocol/` | JSON Schema |
 | Security-critical Rust TCB | `security-core/` | reserved (v0.6+) |
+
+Tenant isolation is enforced by **PostgreSQL Row-Level Security** (not application
+filtering): absent tenant context exposes nothing, a forged `tenant_id` is
+rejected by `WITH CHECK`, the evidence stream is append-only, and the persisted
+hash chain re-verifies after a fresh connection and after restore.
 
 ### The slice, end to end
 

@@ -12,7 +12,11 @@
 | Threat | Control | Verified by |
 |--------|---------|-------------|
 | Malicious/over-broad agent request | deny-by-default PDP, 7-check Permit invariant | `primitives.test.ts` |
-| Cross-tenant access | hard tenant-isolation gate above policy | `slice.test.ts`, `crossTenantProbe` |
+| Cross-tenant access | policy tenant gate + **database RLS** (enable/force, keyed on `app.current_tenant`) | `slice.test.ts`, `isolation.test.ts` |
+| Missing/absent tenant context | RLS fail-closed (no rows visible without `app.current_tenant`) | `isolation.test.ts` |
+| Forged tenant identifier on write | RLS policy `WITH CHECK` rejects the insert | `isolation.test.ts` |
+| Evidence/authoritative-row tampering (DB) | append-only trigger + INSERT-only role (no UPDATE/DELETE) | `isolation.test.ts` |
+| Evidence loss on restart | durable hash-chained store; chain re-verifies after reconnect/restore | `durability.test.ts`, `backup_restore.test.ts` |
 | Capability theft / replay | holder-bound token + proof-of-possession (not bearer) | `primitives.test.ts` |
 | Expired capability reuse | short TTL + `not_expired` check | `primitives.test.ts` |
 | Revoked capability reuse | revocation registry + `not_revoked` check | slice step 12 |
@@ -33,15 +37,19 @@
 
 ## Explicitly NOT covered by v0.1
 
-Side-channel leakage, endpoint capture, malicious platform administrator,
-persistence-tier compromise, denial-of-wallet on real model providers,
+Side-channel leakage, endpoint capture, malicious platform administrator (a
+superuser bypasses RLS by design — key custody/HSM is the answer, on the
+roadmap), object-storage compromise, denial-of-wallet on real model providers,
 supply-chain compromise of dependencies, and semantic leakage through model
-outputs. These require the production tiers (KMS/HSM, TEE attestation, model
-gateway, DLP) on the roadmap and are named here so the boundary is honest.
+outputs. These require the production tiers (KMS/HSM, TEE attestation, DLP) on
+the roadmap and are named here so the boundary is honest.
 
 ## Residual risk
 
-The v0.1 store is in-memory and single-process. Guarantees hold only under the
+Tenant isolation and the evidence chain are now enforced/durable in PostgreSQL
+via RLS and re-verified after restart, but the platform signing key is still
+generated in-process (not yet in an HSM), object storage is not yet encrypted at
+the tier, and a database superuser bypasses RLS. Guarantees hold only under the
 assumptions above. The model-gateway injection screening is **pattern-based and
 heuristic** — it raises cost and catches known patterns; it is not a complete
 defence against adversarially-crafted injection, and the model itself is

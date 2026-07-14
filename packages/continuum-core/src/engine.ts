@@ -14,7 +14,13 @@ import {
   findConsent,
   type Store,
 } from "./store";
-import type { MemoryObject, Principal } from "./types";
+import type {
+  ConsentRecord,
+  MemoryObject,
+  PolicyConfig,
+  Principal,
+  Tenant,
+} from "./types";
 import {
   actionProposalInputSchema,
   intentInputSchema,
@@ -93,6 +99,20 @@ function quantile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
   const idx = Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1);
   return sorted[Math.max(0, idx)] ?? 0;
+}
+
+export interface EngineExport {
+  platform_public_key_pem: string;
+  policy: PolicyConfig;
+  tenants: Tenant[];
+  principals: Principal[];
+  memory: MemoryObject[];
+  consent: ConsentRecord[];
+  intents: Intent[];
+  capabilities: SignedSCT[];
+  revoked_handles: string[];
+  actions: ActionRecord[];
+  evidence: EvidenceEnvelope[];
 }
 
 export class ContinuumEngine {
@@ -644,6 +664,27 @@ export class ContinuumEngine {
 
   listModelCalls(): ModelCallResult[] {
     return this.modelCalls.map((c) => ({ ...c }));
+  }
+
+  /**
+   * Full serialisable snapshot of authoritative state — the input to durable
+   * persistence. Includes the platform public key so a persisted evidence
+   * chain can be re-verified after a restart/restore.
+   */
+  exportState(): EngineExport {
+    return {
+      platform_public_key_pem: this.store.platform.publicKeyPem,
+      policy: this.store.config,
+      tenants: this.tenants(),
+      principals: this.listPrincipals(),
+      memory: [...this.store.memory.values()],
+      consent: this.store.consent,
+      intents: [...this.intents.values()],
+      capabilities: [...this.tokens.values()],
+      revoked_handles: [...this.revoked],
+      actions: this.listActions(),
+      evidence: this.ledger.all(),
+    };
   }
 
   private disclosureReductions: number[] = [];

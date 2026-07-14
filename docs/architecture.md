@@ -38,9 +38,10 @@ every deny carries its full check list.
 
 ```
 continuum/
-├── packages/continuum-core/   # TS control-plane core (framework-free, tested)
-├── apps/console/              # Next.js operations console (Foundry-style)
-├── research/sif-bench/        # Python benchmark harness
+├── packages/continuum-core/        # TS control-plane core (framework-free, tested)
+├── packages/continuum-persistence/ # durable data plane: Postgres + RLS isolation
+├── apps/console/                   # Next.js operations console (Foundry-style)
+├── research/sif-bench/             # Python benchmark harness
 ├── protocol/                  # CIP schemas + versioning rules
 ├── security-core/             # reserved Rust TCB (deferred, v0.6+)
 └── docs/                      # claims, threat model, architecture
@@ -64,8 +65,19 @@ owner + agent authenticate
   → cross-tenant probe denied by isolation
 ```
 
+## Durable data plane (`packages/continuum-persistence`)
+
+The in-memory store is mirrored to PostgreSQL. Tenant isolation is enforced by
+**Row-Level Security**, not application filtering: every tenant-scoped table
+`ENABLE`s + `FORCE`s RLS with a policy keyed on the transaction-local
+`app.current_tenant`. The app connects as a NOSUPERUSER, SELECT/INSERT-only role
+(`continuum_app`); the evidence stream is append-only (privilege + trigger).
+Absent tenant context, RLS exposes nothing (fail-closed); a forged `tenant_id`
+insert is rejected by `WITH CHECK`. Persisted evidence re-verifies its hash
+chain after a fresh connection/restore. Tested against a real embedded Postgres.
+
 ## Not yet in v0.1 (roadmap)
 
-PostgreSQL + object storage + append-only event store; SPIFFE/SPIRE workload
-identity; customer-managed keys / HSM; Temporal workflows; graph memory;
+Object storage for encrypted artifacts; SPIFFE/SPIRE workload identity;
+customer-managed keys / HSM; Temporal workflows; graph memory;
 confidential-compute attestation; the Rust security-core extraction.

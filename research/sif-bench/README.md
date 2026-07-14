@@ -25,6 +25,19 @@ so CI can use it directly.
 6. **Agent interoperability** — N/A in v0.1 (single provider/framework).
 7. **Operational resilience** — authorization p99, evidence-chain validity.
 
+### Database-enforced gates (Tracks 4 & 5)
+
+Tenant-isolation and evidence-completeness gates are realised against a **real
+PostgreSQL** by the `@continuum/persistence` suite (row-level security, missing
+tenant context fail-closed, forged-`tenant_id` rejection, append-only evidence,
+restart/restore hash-chain re-verification):
+
+```bash
+npm run test -w @continuum/persistence
+```
+
+These run in CI as a required gate alongside the HTTP harness above.
+
 ## Honesty
 
 Zero observed events is **not** proof of impossibility. This harness exercises

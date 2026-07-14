@@ -121,42 +121,54 @@ export class EvidenceLedger {
 
   /** Recompute the whole chain: links, hashes, and signatures. */
   verifyChain(): ChainVerification {
-    let expectedPrev = GENESIS;
-    for (let i = 0; i < this.entries.length; i++) {
-      const env = this.entries[i]!;
-      const { hash, signature, ...body } = env;
-      if (body.prev_hash !== expectedPrev) {
-        return {
-          valid: false,
-          length: this.entries.length,
-          broken_at: i,
-          detail: `broken link at seq ${i}: prev_hash mismatch`,
-        };
-      }
-      const recomputed = sha256Hex(expectedPrev + canonicalJson(body));
-      if (recomputed !== hash) {
-        return {
-          valid: false,
-          length: this.entries.length,
-          broken_at: i,
-          detail: `tampered content at seq ${i}: hash mismatch`,
-        };
-      }
-      if (!verifyEd25519(this.platformPublicKeyPem, hash, signature)) {
-        return {
-          valid: false,
-          length: this.entries.length,
-          broken_at: i,
-          detail: `invalid signature at seq ${i}`,
-        };
-      }
-      expectedPrev = hash;
-    }
-    return {
-      valid: true,
-      length: this.entries.length,
-      broken_at: null,
-      detail: `chain intact across ${this.entries.length} envelopes`,
-    };
+    return verifyEnvelopeChain(this.entries, this.platformPublicKeyPem);
   }
+}
+
+/**
+ * Verify an evidence chain independently of any ledger instance. Used to
+ * re-verify a chain reconstructed from durable storage after a restart or
+ * restore — the whole point of tamper-evident persistence.
+ */
+export function verifyEnvelopeChain(
+  entries: EvidenceEnvelope[],
+  publicKeyPem: string,
+): ChainVerification {
+  let expectedPrev = GENESIS;
+  for (let i = 0; i < entries.length; i++) {
+    const env = entries[i]!;
+    const { hash, signature, ...body } = env;
+    if (body.prev_hash !== expectedPrev) {
+      return {
+        valid: false,
+        length: entries.length,
+        broken_at: i,
+        detail: `broken link at seq ${i}: prev_hash mismatch`,
+      };
+    }
+    const recomputed = sha256Hex(expectedPrev + canonicalJson(body));
+    if (recomputed !== hash) {
+      return {
+        valid: false,
+        length: entries.length,
+        broken_at: i,
+        detail: `tampered content at seq ${i}: hash mismatch`,
+      };
+    }
+    if (!verifyEd25519(publicKeyPem, hash, signature)) {
+      return {
+        valid: false,
+        length: entries.length,
+        broken_at: i,
+        detail: `invalid signature at seq ${i}`,
+      };
+    }
+    expectedPrev = hash;
+  }
+  return {
+    valid: true,
+    length: entries.length,
+    broken_at: null,
+    detail: `chain intact across ${entries.length} envelopes`,
+  };
 }

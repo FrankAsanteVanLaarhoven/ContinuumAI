@@ -29,6 +29,9 @@ jobs:
       - name: Unit + invariant tests (control-plane core)
         run: npm run test -w @continuum/core
 
+      - name: DB isolation + durability gate (embedded Postgres, RLS)
+        run: npm run test -w @continuum/persistence
+
       - name: Build console
         run: npm run build -w @continuum/console
 
