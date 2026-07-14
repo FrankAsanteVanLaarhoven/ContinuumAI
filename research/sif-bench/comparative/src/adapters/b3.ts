@@ -32,6 +32,7 @@ export const B3: Baseline = {
       .filter((o) => o.tenant === task.tenant)
       .filter((o) => task.requested_operations.includes(o.read_operation))
       .filter((o) => !task.prohibited_operations.includes(o.read_operation))
+      .filter((o) => o.purpose_tags.includes(task.purpose)) // intent/purpose binding (I1)
       .filter((o) => RANK[o.classification] <= RANK[CEILING]);
 
     // Minimum projection (I2): only the fields the task actually needs.
@@ -60,7 +61,9 @@ export const B3: Baseline = {
     return assemble("B3", env, task, {
       admitted,
       disclosed_fields,
-      ctx: { agent_prompt: task.agent_prompt, instructions_separated: true, injection_screened, tool_gate: true, permitted_tools },
+      // Full I1-I7 governance: approval gate, replay-resistant PoP (I4), idempotent
+      // action identity (I6), continuous freshness re-check (I3).
+      ctx: { agent_prompt: task.agent_prompt, instructions_separated: true, injection_screened, tool_gate: true, permitted_tools, requires_approval: true, replay_resistant: true, idempotent: true, freshness_checked: true },
       cost: baseCost({ retrieval_ops: 1, policy_evaluations: 5, db_queries: 2 }),
       evidence_records: admitted.length + 1, // per-disclosure envelopes + the authorization decision
     });

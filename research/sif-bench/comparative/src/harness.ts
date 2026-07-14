@@ -81,7 +81,7 @@ export function runComparative(env: Env, tasks: Task[], baselines: Baseline[] = 
     input_manifest: manifest,
     inputs_identical_across_baselines: identical,
     baselines: metrics,
-    deny_all_guard: { utility_rate: denyMetrics.utility_rate, utility_guard_passed: denyMetrics.utility_guard_passed },
+    deny_all_guard: { utility_rate: denyMetrics.mean_weighted_utility, utility_guard_passed: denyMetrics.utility_guard_passed },
     utility_guard_rejects_deny_all: !denyMetrics.utility_guard_passed,
     passed: identical && !denyMetrics.utility_guard_passed && metrics.every((m) => m.per_task.length === tasks.length),
   };

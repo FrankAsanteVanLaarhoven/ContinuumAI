@@ -39,7 +39,9 @@ export const B2: Baseline = {
     return assemble("B2", env, task, {
       admitted: objs,
       disclosed_fields,
-      ctx: { agent_prompt: task.agent_prompt, instructions_separated: false, injection_screened, tool_gate: true, permitted_tools },
+      // Conventional enterprise workflow HAS an approval gate, but no replay
+      // resistance, idempotency, or continuous freshness re-check.
+      ctx: { agent_prompt: task.agent_prompt, instructions_separated: false, injection_screened, tool_gate: true, permitted_tools, requires_approval: true, replay_resistant: false, idempotent: false, freshness_checked: false },
       cost: baseCost({ retrieval_ops: 1, policy_evaluations: 2, db_queries: 2 }),
       evidence_records: objs.length, // conventional audit log: one row per disclosure
     });

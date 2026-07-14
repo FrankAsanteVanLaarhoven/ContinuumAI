@@ -4,7 +4,7 @@
  * permitted but there is no preventive governance. The permissive ceiling.
  */
 import type { Baseline, Env, Outcome, Task } from "../schemas";
-import { assemble, baseCost, fullProjection } from "./common";
+import { assemble, baseCost, fullProjection, NO_CAPS } from "./common";
 
 export const B0: Baseline = {
   id: "B0",
@@ -19,7 +19,7 @@ export const B0: Baseline = {
     return assemble("B0", env, task, {
       admitted: objs,
       disclosed_fields,
-      ctx: { agent_prompt: task.agent_prompt, instructions_separated: false, injection_screened: false, tool_gate: false, permitted_tools: [] },
+      ctx: { agent_prompt: task.agent_prompt, instructions_separated: false, injection_screened: false, tool_gate: false, permitted_tools: [], ...NO_CAPS },
       cost: baseCost({ retrieval_ops: 1, policy_evaluations: 0, db_queries: 1 }),
       evidence_records: 0,
     });

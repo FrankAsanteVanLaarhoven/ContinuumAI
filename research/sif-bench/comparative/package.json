@@ -8,7 +8,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "experiment": "vitest run src/experiment.test.ts"
   },
   "dependencies": {
     "@continuum/core": "*"

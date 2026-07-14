@@ -4,7 +4,7 @@
  * state machine. Objects enter context by retrieval score alone.
  */
 import type { Baseline, Env, Outcome, Task } from "../schemas";
-import { assemble, baseCost, fullProjection, topK } from "./common";
+import { assemble, baseCost, fullProjection, topK, NO_CAPS } from "./common";
 
 export const B1: Baseline = {
   id: "B1",
@@ -15,7 +15,7 @@ export const B1: Baseline = {
     return assemble("B1", env, task, {
       admitted: objs,
       disclosed_fields,
-      ctx: { agent_prompt: task.agent_prompt, instructions_separated: false, injection_screened: false, tool_gate: false, permitted_tools: [] },
+      ctx: { agent_prompt: task.agent_prompt, instructions_separated: false, injection_screened: false, tool_gate: false, permitted_tools: [], ...NO_CAPS },
       cost: baseCost({ retrieval_ops: 1, policy_evaluations: 0, db_queries: 1 }),
       evidence_records: 0,
     });

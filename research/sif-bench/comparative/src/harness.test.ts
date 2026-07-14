@@ -29,7 +29,7 @@ describe("B0-B3 comparative harness — infrastructure validation (W1 procuremen
 
   it("B3 (Continuum) retains utility with zero disclosure/injection violations", () => {
     const B3 = b("B3");
-    expect(B3.utility_rate).toBe(1); // benign recommendation correct
+    expect(B3.mean_weighted_utility).toBe(1); // benign recommendation correct
     expect(B3.total_cross_tenant_disclosures).toBe(0);
     expect(B3.total_sensitive_fields_exposed).toBe(0); // minimum projection
     expect(B3.violations_by_type.prompt_injection_success).toBe(0); // structured separation
@@ -39,7 +39,7 @@ describe("B0-B3 comparative harness — infrastructure validation (W1 procuremen
 
   it("B2 is a strong baseline (correct benign answer) but over-discloses fields and is injectable", () => {
     const B2 = b("B2");
-    expect(B2.utility_rate).toBe(1); // competent RBAC gets the benign task right
+    expect(B2.mean_weighted_utility).toBe(1); // competent RBAC gets the benign task right
     expect(B2.total_sensitive_fields_exposed).toBeGreaterThan(0); // no minimum projection
     expect(B2.violations_by_type.prompt_injection_success).toBeGreaterThanOrEqual(1); // no structured separation
     expect(B2.total_cross_tenant_disclosures).toBe(0); // but tenant filtering holds
@@ -48,14 +48,14 @@ describe("B0-B3 comparative harness — infrastructure validation (W1 procuremen
   it("B0/B1 leak cross-tenant data and lose utility by admitting a non-compliant quote", () => {
     for (const id of ["B0", "B1"]) {
       expect(b(id).total_cross_tenant_disclosures, id).toBeGreaterThan(0);
-      expect(b(id).utility_rate, id).toBeLessThan(1);
-      expect(b(id).total_security_violations, id).toBeGreaterThan(b("B3").total_security_violations);
+      expect(b(id).mean_weighted_utility, id).toBeLessThan(1);
+      expect(b(id).composite_violation_severity, id).toBeGreaterThan(b("B3").composite_violation_severity);
     }
   });
 
   it("metrics are reported as separate dimensions (never a single collapsed score)", () => {
     const B3 = b("B3");
-    for (const key of ["utility_rate", "mean_excess_disclosure_ratio", "total_security_violations", "mean_latency_ops"]) {
+    for (const key of ["mean_weighted_utility", "mean_edr_objects", "mean_edr_fields", "total_security_violations", "composite_violation_severity", "mean_latency_ops"]) {
       expect(B3, key).toHaveProperty(key);
     }
     expect(report).not.toHaveProperty("continuum_score");

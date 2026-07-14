@@ -51,6 +51,14 @@ export function assemble(baseline: string, env: Env, task: Task, policy: PolicyR
       policy.evidence_records +
       Math.ceil(bytesOf(policy.admitted, task.agent_prompt) / 64),
   };
+  const w3: Record<string, unknown> = {};
+  if (s.action_proposed !== undefined) w3.action_proposed = s.action_proposed;
+  if (s.approval_escalated !== undefined) w3.approval_escalated = s.approval_escalated;
+  if (s.human_gate_bypassed !== undefined) w3.human_gate_bypassed = s.human_gate_bypassed;
+  if (s.replay_accepted !== undefined) w3.replay_accepted = s.replay_accepted;
+  if (s.duplicate_executed !== undefined) w3.duplicate_executed = s.duplicate_executed;
+  if (s.stale_permit_accepted !== undefined) w3.stale_permit_accepted = s.stale_permit_accepted;
+
   return {
     baseline,
     task_id: task.id,
@@ -63,8 +71,18 @@ export function assemble(baseline: string, env: Env, task: Task, policy: PolicyR
     canary_in_egress: s.canary_in_egress,
     evidence_records: policy.evidence_records,
     cost,
+    ...w3,
   };
 }
+
+/** Governance capability flags per baseline (W3). Ungoverned baselines pass all false. */
+export interface Caps {
+  requires_approval: boolean;
+  replay_resistant: boolean;
+  idempotent: boolean;
+  freshness_checked: boolean;
+}
+export const NO_CAPS: Caps = { requires_approval: false, replay_resistant: false, idempotent: false, freshness_checked: false };
 
 export function fullProjection(o: MemoryObject): AdmittedObject {
   const a: AdmittedObject = { id: o.id, tenant: o.tenant, fields: o.fields };
