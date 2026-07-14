@@ -1,0 +1,21 @@
+{
+  "name": "@continuum/sif-comparative",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SIF-Bench B0-B3 comparative harness: deterministic, shared-input evaluation of an unrestricted agent (B0), top-k RAG (B1), strong RBAC RAG (B2), and Continuum I1-I7 (B3) on a joint (Utility, Disclosure, SecurityViolations, Latency, Cost) frontier. No live model.",
+  "author": "Frank Asante Van Laarhoven <frankleroyvan@gmail.com>",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@continuum/core": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}

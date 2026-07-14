@@ -10,6 +10,7 @@
     "packages/*",
     "apps/*",
     "research/sif-bench/concurrency",
+    "research/sif-bench/comparative",
     "research/sif-bench/interventions/i4",
     "research/sif-bench/interventions/i5",
     "research/sif-bench/interventions/i6"
@@ -25,6 +26,7 @@
     "sif-bench:stage-a": "npm run test -w @continuum/core -- src/adversary.test.ts",
     "sif-bench:stage-b": "npm run test -w @continuum/core -- src/stageb/stage_b.test.ts",
     "intervention:i7": "npm run test -w @continuum/core -- src/stageb/i7.test.ts",
+    "comparative:validate": "npm run test -w @continuum/sif-comparative",
     "sif-bench:concurrency": "npm run test -w @continuum/sif-concurrency",
     "intervention:i1": "npm run test -w @continuum/core -- src/interventions/i1.test.ts",
     "intervention:i2": "npm run test -w @continuum/core -- src/interventions/i2.test.ts",
