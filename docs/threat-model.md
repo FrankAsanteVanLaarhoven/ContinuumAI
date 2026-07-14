@@ -22,6 +22,11 @@
 | Unapproved agent build / model | allowlist checks, fail-closed | `primitives.test.ts` |
 | Sensitive-field leakage | broker redaction before release + canary detection | broker tests, metrics |
 | Over-disclosure | minimum-necessary broker (2 of 10) | slice + metrics |
+| Prompt injection (direct + indirect via retrieved context) | model gateway screens prompt AND context | `gateway.test.ts` |
+| Denial-of-wallet | model gateway token/cost budget | `gateway.test.ts` |
+| Unapproved model / region / over-classification egress | model gateway allowlist + region + classification checks | `gateway.test.ts` |
+| Canary egress through a model call | model gateway egress canary detection | `gateway.test.ts` |
+| Malformed model output | output-schema validation + quarantine | `gateway.test.ts` |
 | Audit-log tampering | hash-chained, signed ledger; `verifyChain` detects edits | `primitives.test.ts` |
 | Prohibited high-consequence action | action state machine hard-denies; human gate blocks the rest | `action.ts`, slice |
 | Malformed / unknown-field input | Zod `.strict()` parsing, fail-closed | `primitives.test.ts` |
@@ -37,4 +42,7 @@ gateway, DLP) on the roadmap and are named here so the boundary is honest.
 ## Residual risk
 
 The v0.1 store is in-memory and single-process. Guarantees hold only under the
-assumptions above. See `docs/CLAIMS.md`.
+assumptions above. The model-gateway injection screening is **pattern-based and
+heuristic** — it raises cost and catches known patterns; it is not a complete
+defence against adversarially-crafted injection, and the model itself is
+simulated. See `docs/CLAIMS.md`.

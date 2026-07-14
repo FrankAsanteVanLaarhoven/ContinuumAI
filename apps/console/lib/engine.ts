@@ -108,6 +108,12 @@ function buildState(): ConsoleState {
       metrics.disclosure_reduction_vs_naive >= 0.6,
     ),
     gate(
+      "Model-gateway screening",
+      `${metrics.model_calls_allowed} ok · ${metrics.model_calls_denied} blocked`,
+      "injection blocked",
+      metrics.injection_blocked >= 1 && metrics.model_calls_allowed >= 1,
+    ),
+    gate(
       "Slice assertions",
       `${current.assertions.filter((a) => a.ok).length}/${current.assertions.length}`,
       "all pass",
@@ -128,6 +134,7 @@ function buildState(): ConsoleState {
     decision: auth.decision,
     disclosure: auth.disclosure,
     capability,
+    model_calls: engine.listModelCalls(),
     actions: engine.listActions(),
     memory: engine.listMemoryMeta("t_acme"),
     evidence: {

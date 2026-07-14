@@ -16,7 +16,7 @@ the build system simple. See `security-core/README.md`.
 | A · Identity & Trust | principals, tenancy, attestation, holder keys | `types.ts`, `store.ts` |
 | B · Intent, Policy & Authority | intent envelopes, deny-by-default PDP, capability tokens, revocation | `protocol.ts`, `policy.ts`, `capability.ts` |
 | C · Sovereign Memory & Knowledge | memory objects + provenance, minimum-disclosure broker | `types.ts`, `store.ts`, `broker.ts` |
-| D · Agent, Model & Tool Execution | action state machine, human gate | `action.ts` |
+| D · Agent, Model & Tool Execution | model gateway (allowlist, injection screening, egress canary, budget, output-schema), action state machine, human gate | `gateway.ts`, `action.ts` |
 | E · Evidence, Observability & Governance | hash-chained signed ledger, metrics | `evidence.ts`, `engine.ts` |
 
 The `ContinuumEngine` (`engine.ts`) is the orchestration facade; every operation
@@ -55,6 +55,8 @@ owner + agent authenticate
   → broker computes minimum disclosure, redacts bank_iban, emits digest
   → holder-bound CIP-004 capability issued (Ed25519, 90s TTL, PoP)
   → agent proves possession → model gateway releases only permitted context
+  → model gateway allows a screened/budgeted/schema-validated call
+    and blocks a prompt-injection attempt (direct + indirect + egress canary)
   → agent proposes external action → blocked at human gate
   → owner approves → tool gateway executes (simulated) → SUCCEEDED
   → every step appends a signed, hash-chained CIP-007 evidence envelope

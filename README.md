@@ -27,9 +27,9 @@ Milestone — plus a Foundry-style operations console over it.
 
 | Layer | Where | Status |
 |-------|-------|--------|
-| Control-plane core (policy, capability, broker, evidence, action) | `packages/continuum-core` | 19 tests green, strict TS |
+| Control-plane core (policy, capability, broker, model gateway, evidence, action) | `packages/continuum-core` | 27 tests green, strict TS |
 | Operations console (Palantir/Foundry aesthetic) | `apps/console` | Next.js 15, live |
-| Benchmark harness | `research/sif-bench` | 10/10 gates, stdlib-only |
+| Benchmark harness | `research/sif-bench` | 11/11 gates, stdlib-only |
 | Protocol schemas (CIP-002/004/007 + index) | `protocol/` | JSON Schema |
 | Security-critical Rust TCB | `security-core/` | reserved (v0.6+) |
 
@@ -40,7 +40,9 @@ PDP permits **2 of 10** memory objects (the other 8 deny for distinct, legible
 reasons) → the broker releases the minimum set and **redacts `bank_iban`** →
 a holder-bound Ed25519 capability (90 s TTL, proof-of-possession) is issued →
 the agent proves possession and the model gateway releases only permitted context
-→ the agent proposes an external action → it is **blocked at the human gate** →
+→ the **model gateway** allows a screened, budgeted, schema-validated call and
+**blocks a prompt-injection attempt** → the agent proposes an external action →
+it is **blocked at the human gate** →
 the owner approves → the tool gateway executes (simulated) → every step appends a
 **signed, hash-chained** evidence envelope → the capability is **revoked** and
 reuse is denied → a **cross-tenant** probe is blocked by isolation.

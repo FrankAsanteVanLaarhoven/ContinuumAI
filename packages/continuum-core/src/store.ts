@@ -13,6 +13,10 @@
  * isolation.
  */
 import { digestOf, generateEd25519, type Ed25519Keypair } from "./crypto";
+import {
+  DEFAULT_INJECTION_PATTERNS,
+  type ModelGatewayConfig,
+} from "./gateway";
 import type {
   ApprovedRegistry,
   ConsentRecord,
@@ -31,6 +35,7 @@ export interface Store {
   consent: ConsentRecord[];
   registry: ApprovedRegistry;
   config: PolicyConfig;
+  gateway: ModelGatewayConfig;
   platform: Ed25519Keypair;
 }
 
@@ -343,6 +348,33 @@ export function createSeededStore(): Store {
     capability_ttl_seconds: 90,
   };
 
+  const gateway: ModelGatewayConfig = {
+    providers: [
+      {
+        provider: "continuum-model-gateway",
+        model_id: "gw-approved-llm-2026-06",
+        version: "2026-06-01",
+        region: "GB",
+        zero_retention: true,
+        external: false,
+        max_classification: "confidential",
+      },
+      {
+        provider: "continuum-model-gateway",
+        model_id: "gw-approved-llm-restricted",
+        version: "2026-06-01",
+        region: "GB",
+        zero_retention: true,
+        external: false,
+        max_classification: "restricted",
+      },
+    ],
+    injection_patterns: DEFAULT_INJECTION_PATTERNS,
+    canaries: ["GB29NWBK60161331926819"],
+    per_request_token_budget: 4000,
+    gbp_per_1k_tokens: 0.5,
+  };
+
   return {
     tenants,
     principals,
@@ -351,6 +383,7 @@ export function createSeededStore(): Store {
     consent,
     registry,
     config,
+    gateway,
     platform,
   };
 }

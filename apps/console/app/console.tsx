@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { ConsoleState } from "../lib/dto";
-import type { ActionRecord, EvidenceEnvelope } from "@continuum/core";
+import type { ActionRecord, EvidenceEnvelope, ModelCallResult } from "@continuum/core";
 
 function short(id: string, n = 10): string {
   return id.length > n ? `${id.slice(0, n)}…` : id;
@@ -53,6 +53,7 @@ export function Console({ initial }: { initial: ConsoleState }) {
     { label: "Evidence envelopes", value: `${m.evidence_count}`, ok: m.evidence_chain_valid, target: m.evidence_chain_valid ? "chain intact" : "chain broken" },
     { label: "Canary exfiltration", value: `${(m.canary_exfiltration_rate * 100).toFixed(0)}%`, ok: m.canary_exfiltration_rate === 0, target: `${m.canary_trials} trials` },
     { label: "Cross-tenant leaks", value: `${m.cross_tenant_leaks}`, ok: m.cross_tenant_leaks === 0, target: `${m.cross_tenant_attempts} probed` },
+    { label: "Gateway screening", value: `${m.injection_blocked} blocked`, ok: m.injection_blocked >= 1 && m.model_calls_allowed >= 1, target: `${m.model_calls_allowed} allowed` },
   ];
 
   return (
@@ -263,6 +264,20 @@ export function Console({ initial }: { initial: ConsoleState }) {
           </Panel>
         </div>
 
+        {/* Model gateway */}
+        <div className="col-12">
+          <Panel title="Model Gateway" tag="Plane D · OWASP-LLM boundary">
+            <div
+              className="panel-body"
+              style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14 }}
+            >
+              {state.model_calls.map((c, i) => (
+                <ModelGatewayCard key={i} call={c} />
+              ))}
+            </div>
+          </Panel>
+        </div>
+
         {/* Evidence ledger */}
         <div className="col-6">
           <Panel title="Evidence Ledger" tag="Plane E · CIP-007 · hash-chained">
@@ -415,6 +430,43 @@ function ActionFlow({ action }: { action: ActionRecord }) {
       {denied && <div className="reason" style={{ marginTop: 4 }}><span className="k">blocked</span> · {action.denied_reason}</div>}
       {action.requires_human_approval && !denied && (
         <div className="reason" style={{ marginTop: 4 }}>human approval required · proposing agent cannot self-approve</div>
+      )}
+    </div>
+  );
+}
+
+function ModelGatewayCard({ call }: { call: ModelCallResult }) {
+  const out = call.output as Record<string, unknown> | null;
+  return (
+    <div className="disc-obj">
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <span className={`dot ${call.allowed ? "ok" : "bad"}`} />
+        <span className="mono" style={{ fontSize: 11 }}>{call.requested_model}</span>
+        <span className={`chip ${call.allowed ? "cyan" : "red"}`} style={{ marginLeft: "auto" }}>
+          {call.allowed ? "ALLOWED" : "BLOCKED"}
+        </span>
+      </div>
+      {call.checks.map((ck) => (
+        <div key={ck.name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
+          <span className={`dot ${ck.satisfied ? "ok" : "bad"}`} />
+          <span className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)", minWidth: 172 }}>{ck.name}</span>
+          <span
+            className="mono"
+            style={{ fontSize: 10, color: "var(--text-faint)", flex: 1, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
+            {ck.detail}
+          </span>
+        </div>
+      ))}
+      {call.allowed && out ? (
+        <>
+          <div className="micro" style={{ marginTop: 8 }}>simulated model output · schema-validated</div>
+          <div className="kv"><span className="k">recommended</span><span className="v">{String(out["recommended_supplier"])}</span></div>
+          <div className="kv"><span className="k">unit price</span><span className="v">£{String(out["unit_price_gbp"])}</span></div>
+          <div className="kv"><span className="k">tokens · cost</span><span className="v">{call.tokens_charged} · £{call.cost_gbp.toFixed(4)}</span></div>
+        </>
+      ) : (
+        <div className="reason" style={{ marginTop: 6 }}><span className="k">blocked</span> · {call.denied_reason}</div>
       )}
     </div>
   );

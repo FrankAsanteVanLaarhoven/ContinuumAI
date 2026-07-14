@@ -41,6 +41,11 @@ import {
   evaluateProposal,
   type ActionRecord,
 } from "./action";
+import {
+  evaluateModelCall,
+  type ModelCallRequest,
+  type ModelCallResult,
+} from "./gateway";
 
 const CANARY = "GB29NWBK60161331926819"; // the apex bank_iban — must never leak
 
@@ -78,6 +83,10 @@ export interface MetricsSnapshot {
   provenance_completeness: number;
   false_permit_observed: number;
   false_deny_observed: number;
+  model_calls_allowed: number;
+  model_calls_denied: number;
+  injection_blocked: number;
+  egress_canary_blocked: number;
 }
 
 function quantile(sorted: number[], p: number): number {
@@ -109,6 +118,11 @@ export class ContinuumEngine {
   private humanGateBypasses = 0;
   private authorizationsCount = 0;
   private materialEvents = 0;
+  private readonly modelCalls: ModelCallResult[] = [];
+  private modelCallsAllowed = 0;
+  private modelCallsDenied = 0;
+  private injectionBlocked = 0;
+  private egressCanaryBlocked = 0;
 
   constructor(store?: Store) {
     this.store = store ?? createSeededStore();
@@ -370,6 +384,127 @@ export class ContinuumEngine {
     return { verification, disclosure, canary_present: canaryPresent };
   }
 
+  /**
+   * Route a model call through the gateway. Requires a live capability (PoP),
+   * uses only the already-redacted disclosure as context, and enforces
+   * allowlist / region / classification / injection / budget / canary /
+   * output-schema. The model itself is simulated.
+   */
+  callModel(
+    tokenId: string,
+    params: {
+      agentPrompt: string;
+      requestedModelId?: string;
+      estimatedTokens?: number;
+    },
+    nowMs = Date.now(),
+  ): ModelCallResult {
+    const signed = this.tokens.get(tokenId);
+    if (!signed) throw new Error(`unknown capability ${tokenId}`);
+
+    const agentKeys = this.store.agentKeys.get(signed.token.actor);
+    const pop =
+      agentKeys !== undefined
+        ? {
+            challenge: "model-call",
+            signature: signEd25519(
+              agentKeys.privateKeyPem,
+              popMessage(signed.token, "model-call"),
+            ),
+          }
+        : null;
+    const verification = verifySCT(signed, {
+      platformPublicKeyPem: this.store.platform.publicKeyPem,
+      nowMs,
+      revokedHandles: this.revoked,
+      audience: null,
+      pop,
+    });
+
+    if (!verification.valid) {
+      const denied: ModelCallResult = {
+        allowed: false,
+        requested_model:
+          params.requestedModelId ?? signed.token.model_id ?? "unspecified",
+        checks: [
+          {
+            name: "capability_valid",
+            satisfied: false,
+            detail: verification.denied_reason ?? "invalid capability",
+          },
+        ],
+        denied_reason: verification.denied_reason,
+        model: null,
+        tokens_charged: 0,
+        cost_gbp: 0,
+        output: null,
+        output_valid: false,
+        quarantined: false,
+      };
+      this.modelCalls.push(denied);
+      this.modelCallsDenied += 1;
+      this.emit({
+        tenant_id: signed.token.tenant_id,
+        owner_id: signed.token.subject,
+        principal: signed.token.actor,
+        event_type: "model.call.denied",
+        intent_id: signed.token.intent_id,
+        capability_id: signed.token.token_id,
+        decision: verification.denied_reason,
+        nowMs,
+      });
+      return denied;
+    }
+
+    const disclosure = this.disclosures.get(tokenId);
+    const intent = this.intents.get(signed.token.intent_id);
+    const request: ModelCallRequest = {
+      token: signed.token,
+      requested_model_id:
+        params.requestedModelId ??
+        signed.token.model_id ??
+        "gw-approved-llm-2026-06",
+      disclosed: disclosure?.disclosed ?? [],
+      agent_prompt: params.agentPrompt,
+      allowed_regions: intent?.constraints.geographic_boundary ?? ["GB"],
+      max_cost_gbp: intent?.constraints.maximum_cost_gbp ?? 0,
+      estimated_tokens: params.estimatedTokens ?? 800,
+    };
+
+    const result = evaluateModelCall(request, this.store.gateway);
+    this.modelCalls.push(result);
+    if (result.allowed) this.modelCallsAllowed += 1;
+    else this.modelCallsDenied += 1;
+    if (result.checks.some((c) => c.name === "no_prompt_injection" && !c.satisfied)) {
+      this.injectionBlocked += 1;
+    }
+    if (result.checks.some((c) => c.name === "egress_no_canary" && !c.satisfied)) {
+      this.egressCanaryBlocked += 1;
+    }
+
+    this.emit({
+      tenant_id: signed.token.tenant_id,
+      owner_id: signed.token.subject,
+      principal: signed.token.actor,
+      event_type: result.allowed ? "model.call" : "model.call.denied",
+      intent_id: signed.token.intent_id,
+      capability_id: signed.token.token_id,
+      decision: result.allowed
+        ? `allowed · ${result.tokens_charged} tok · £${result.cost_gbp.toFixed(4)}`
+        : result.denied_reason,
+      model: result.model
+        ? {
+            provider: result.model.provider,
+            model_id: result.model.model_id,
+            version: result.model.version,
+          }
+        : null,
+      result_digest: result.output ? digestOf(result.output) : null,
+      nowMs,
+    });
+    return result;
+  }
+
   proposeAction(input: unknown, nowMs = Date.now()): ActionRecord {
     const parsed = actionProposalInputSchema.parse(input);
     const intent = this.intents.get(parsed.intent_id);
@@ -500,7 +635,15 @@ export class ContinuumEngine {
           : Math.min(1, this.ledger.size() / this.materialEvents),
       false_permit_observed: 0,
       false_deny_observed: 0,
+      model_calls_allowed: this.modelCallsAllowed,
+      model_calls_denied: this.modelCallsDenied,
+      injection_blocked: this.injectionBlocked,
+      egress_canary_blocked: this.egressCanaryBlocked,
     };
+  }
+
+  listModelCalls(): ModelCallResult[] {
+    return this.modelCalls.map((c) => ({ ...c }));
   }
 
   private disclosureReductions: number[] = [];

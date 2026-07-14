@@ -35,6 +35,8 @@ describe("vertical slice — first implementation milestone", () => {
     expect(types).toContain("authorization.decided");
     expect(types).toContain("capability.issued");
     expect(types).toContain("context.disclosed");
+    expect(types).toContain("model.call");
+    expect(types).toContain("model.call.denied");
     expect(types).toContain("action.executed");
     expect(types).toContain("capability.revoked");
     expect(types).toContain("cross_tenant.probe");

@@ -11,6 +11,7 @@ import type {
   EvidenceEnvelope,
   MemoryObject,
   MetricsSnapshot,
+  ModelCallResult,
   Principal,
   SliceAssertion,
   SliceStep,
@@ -54,6 +55,7 @@ export interface ConsoleState {
   decision: AuthorizationDecision;
   disclosure: DisclosurePackage;
   capability: CapabilityView | null;
+  model_calls: ModelCallResult[];
   actions: ActionRecord[];
   memory: Array<Omit<MemoryObject, "content">>;
   evidence: { entries: EvidenceEnvelope[]; valid: boolean; detail: string };

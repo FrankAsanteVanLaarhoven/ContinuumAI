@@ -10,6 +10,7 @@ export * from "./types";
 export * from "./protocol";
 export * from "./policy";
 export * from "./broker";
+export * from "./gateway";
 export * from "./capability";
 export * from "./evidence";
 export * from "./action";
