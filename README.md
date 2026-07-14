@@ -27,18 +27,42 @@ Milestone — plus a Foundry-style operations console over it.
 
 | Layer | Where | Status |
 |-------|-------|--------|
-| Control-plane core (policy, capability, broker, model gateway, evidence, action) | `packages/continuum-core` | 27 tests green, strict TS |
-| Durable data plane (PostgreSQL + row-level-security isolation) | `packages/continuum-persistence` | 14 tests green (real embedded Postgres) |
+| Control-plane core (policy, capability, broker, model gateway, evidence, action) | `packages/continuum-core` | strict TS |
+| Durable data plane (PostgreSQL + row-level-security isolation) | `packages/continuum-persistence` | real embedded Postgres |
 | Operations console (Palantir/Foundry aesthetic) | `apps/console` | Next.js 15, live |
-| Benchmark harness | `research/sif-bench` | 11/11 gates, stdlib-only |
+| Benchmark harness | `research/sif-bench` | stdlib-only |
 | Research paper (stable components) | `research/paper` | problem, hypotheses, RQs, protocol, claim-evidence matrix |
 | Protocol schemas (CIP-002/004/007 + index) | `protocol/` | JSON Schema |
 | Security-critical Rust TCB | `security-core/` | reserved (v0.6+) |
 
+### Gates, reported by suite
+
+Each suite is a distinct gate with its own scope. They are **not** summed into a
+single headline number — a passing HTTP gate does not stand in for a passing
+database-isolation gate, and vice versa.
+
+| Suite | Command | Passing |
+|-------|---------|---------|
+| Core control-plane tests | `npm run test` | 27 |
+| Persistence — isolation | `npm run test:persistence` | 7 |
+| Persistence — durability (incl. idempotent migration) | `npm run test:persistence` | 6 |
+| Persistence — logical restore | `npm run test:persistence` | 1 |
+| SIF-Bench HTTP harness (over the live console) | `npm run sif-bench` | 11/11 gates |
+| Console operational gates | in `apps/console` | 11/11 gates |
+
 Tenant isolation is enforced by **PostgreSQL Row-Level Security** (not application
 filtering): absent tenant context exposes nothing, a forged `tenant_id` is
 rejected by `WITH CHECK`, the evidence stream is append-only, and the persisted
-hash chain re-verifies after a fresh connection and after restore.
+hash chain re-verifies after a fresh connection.
+
+**Persistence boundary — read precisely.** Durability is verified over a fresh
+connection and a **logical** restore only; a full physical cluster stop/start and
+a `pg_dump`/`pg_restore` cycle are **not** yet exercised. The platform signing key
+is generated **in-process** (no HSM/KMS custody), so a database **superuser
+bypasses RLS**; the isolation guarantee holds for the least-privilege
+`continuum_app` role, not against a superuser. At-rest encryption for object
+storage is not implemented. See [`docs/CLAIMS.md`](docs/CLAIMS.md) and
+[`docs/threat-model.md`](docs/threat-model.md).
 
 ### The slice, end to end
 
@@ -64,11 +88,16 @@ become polyglot only where measurement proves it improves assurance.
 
 ```bash
 npm install
-npm run verify                 # typecheck (strict) + core tests
+npm run verify                 # typecheck (strict) + core control-plane tests
+npm run test:persistence       # real embedded Postgres: isolation + durability + restore
 npm run dev                    # console + control plane at http://localhost:4311
 # in another shell, with the server up:
-python3 research/sif-bench/sif_bench.py --iterations 30
+npm run sif-bench              # SIF-Bench HTTP gates over the live console
 ```
+
+Each command is a separate gate; run all of them for full coverage. `npm run
+verify` alone exercises only the core control plane, not the database or the
+HTTP benchmark.
 
 API: `GET /api/state` (full control-plane snapshot), `POST /api/rerun`.
 
