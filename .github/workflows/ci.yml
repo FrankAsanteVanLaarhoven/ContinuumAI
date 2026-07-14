@@ -26,7 +26,9 @@ jobs:
       - name: Typecheck (all workspaces, strict)
         run: npm run typecheck
 
-      - name: Unit + invariant tests (control-plane core)
+      - name: Unit, invariant & Stage A adversarial tests (control-plane core)
+        # Includes SIF-Bench Stage A: deterministic capability / tenant-isolation
+        # / evidence-tamper / human-gate-bypass attacks, all required to be blocked.
         run: npm run test -w @continuum/core
 
       - name: DB isolation + durability gate (embedded Postgres, RLS)
@@ -51,5 +53,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sif-bench-report
-          path: research/sif-bench/results/report.json
+          path: |
+            research/sif-bench/results/report.json
+            research/sif-bench/results/stage_a.json
           if-no-files-found: ignore

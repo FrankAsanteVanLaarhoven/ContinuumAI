@@ -552,10 +552,52 @@ export class ContinuumEngine {
     return record;
   }
 
+  /**
+   * Reason an approver is not authorized to close a human gate, or `null` if
+   * they are. The gate is meaningful only if the approver is an *attested human*
+   * in the action's own tenant who is *not* the proposing actor — otherwise an
+   * agent could self-approve, a foreign tenant could approve, or an
+   * unattested/unknown principal could. This is the control that makes "the
+   * proposing agent cannot self-approve" true in code, not just in comment.
+   */
+  private approverDenialReason(record: ActionRecord, approver: string): string | null {
+    if (approver === record.actor) return "self-approval forbidden";
+    const principal = this.getPrincipal(approver);
+    if (principal === null) return "unknown approver";
+    if (principal.kind !== "human") return "approver is not a human principal";
+    if (!principal.attested) return "approver not attested";
+    const intent = this.intents.get(record.intent_id);
+    if (intent === undefined || principal.tenant_id !== intent.tenant_id) {
+      return "approver outside the action's tenant";
+    }
+    return null;
+  }
+
   approveAction(actionId: string, approver: string, nowMs = Date.now()): ActionRecord {
     const record = this.actions.get(actionId);
     if (!record) throw new Error(`unknown action ${actionId}`);
     const intent = this.intents.get(record.intent_id);
+
+    // Human-gate authorization. Applies whenever the action rests at the gate.
+    // An unauthorized attempt does not advance the action: it stays blocked at
+    // POLICY_APPROVED and the refusal is itself recorded as evidence.
+    if (record.requires_human_approval && record.state === "POLICY_APPROVED") {
+      const denial = this.approverDenialReason(record, approver);
+      if (denial !== null) {
+        this.emit({
+          tenant_id: intent?.tenant_id ?? "unknown",
+          owner_id: intent?.owner_id ?? "unknown",
+          principal: approver,
+          event_type: "action.approval.denied",
+          intent_id: record.intent_id,
+          decision: denial,
+          result_digest: digestOf(record),
+          nowMs,
+        });
+        return record;
+      }
+    }
+
     const updated = approveAction(record, approver, nowMs);
 
     this.emit({

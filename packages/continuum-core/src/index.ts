@@ -17,3 +17,4 @@ export * from "./action";
 export * from "./store";
 export * from "./engine";
 export * from "./slice";
+export * from "./adversary";

@@ -43,12 +43,22 @@ database-isolation gate, and vice versa.
 
 | Suite | Command | Passing |
 |-------|---------|---------|
-| Core control-plane tests | `npm run test` | 27 |
+| Core invariant tests (primitives, slice, gateway) | `npm run test` | 27 |
+| SIF-Bench **Stage A** — deterministic control-plane adversarial | `npm run sif-bench:stage-a` | 6 tests · 18 attacks blocked · 4 controls |
 | Persistence — isolation | `npm run test:persistence` | 7 |
 | Persistence — durability (incl. idempotent migration) | `npm run test:persistence` | 6 |
 | Persistence — logical restore | `npm run test:persistence` | 1 |
 | SIF-Bench HTTP harness (over the live console) | `npm run sif-bench` | 11/11 gates |
 | Console operational gates | in `apps/console` | 11/11 gates |
+
+**Stage A** attacks the control plane's own guarantees with no model and no
+corpus: capability misuse (bearer replay, forged proof-of-possession, expiry,
+revocation, scope/tenant tamper, audience confusion), cross-tenant access,
+evidence-chain tamper (content, link, re-sign, splice), and human-gate bypass
+(agent self-approval, impostor and cross-tenant approvers). Every attack must be
+blocked *and* fail for the expected reason; positive controls confirm the
+legitimate paths still succeed, so a pass cannot be reached by over-blocking. The
+frozen v0.2 baseline is `research/sif-bench/STAGE_A_BASELINE.md`.
 
 Tenant isolation is enforced by **PostgreSQL Row-Level Security** (not application
 filtering): absent tenant context exposes nothing, a forged `tenant_id` is

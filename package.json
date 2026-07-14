@@ -18,6 +18,7 @@
     "test": "npm run test -w @continuum/core",
     "test:persistence": "npm run test -w @continuum/persistence",
     "sif-bench": "python3 research/sif-bench/sif_bench.py --iterations 30",
+    "sif-bench:stage-a": "npm run test -w @continuum/core -- src/adversary.test.ts",
     "build": "npm run build --workspaces --if-present",
     "dev": "npm run dev -w @continuum/console",
     "verify": "npm run typecheck && npm run test"

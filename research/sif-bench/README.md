@@ -25,6 +25,23 @@ so CI can use it directly.
 6. **Agent interoperability** — N/A in v0.1 (single provider/framework).
 7. **Operational resilience** — authorization p99, evidence-chain validity.
 
+### Stage A — deterministic control-plane adversarial (v0.2)
+
+The v0.2 adversarial suite is split. **Stage A** attacks the control plane's own
+guarantees with **no model and no corpus**, so every result is deterministic
+(exact, not sampled): capability misuse, cross-tenant access, evidence-chain
+tamper, and human-gate bypass. **Stage B** (model / memory corpus: canary,
+prompt-injection, poisoning, extraction) builds on top of it and is not yet
+implemented.
+
+```bash
+npm run sif-bench:stage-a
+```
+
+The frozen Stage A baseline — 18/18 attacks blocked, 4/4 controls, zero leakage —
+is [`STAGE_A_BASELINE.md`](STAGE_A_BASELINE.md); the baselines B0–B3 must not move
+those numbers silently.
+
 ### Database-enforced gates (Tracks 4 & 5)
 
 Tenant-isolation and evidence-completeness gates are realised against a **real

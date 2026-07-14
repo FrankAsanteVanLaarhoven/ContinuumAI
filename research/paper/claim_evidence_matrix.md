@@ -1,6 +1,7 @@
 # Claim–Evidence Matrix
 
-**Maturity:** Research prototype v0.1 (commit `3f038fd`).
+**Maturity:** Research prototype — v0.1 durable data plane, plus the v0.2 Stage A
+deterministic control-plane adversarial baseline (`research/sif-bench/STAGE_A_BASELINE.md`).
 
 This matrix governs what the paper may assert. A proposed claim may appear in the
 manuscript **only** at the strength its current evidence supports. "Not
@@ -13,11 +14,11 @@ paper's claim strength, subordinate to [`../../docs/CLAIMS.md`](../../docs/CLAIM
 | Proposed claim | Required evidence | Current status |
 |----------------|-------------------|----------------|
 | Intent-bound access reduces over-disclosure | baseline comparison over multiple workloads | Not established |
-| Holder binding prevents token replay | replay attack experiments | Preliminary local evidence |
-| Revocation terminates active authority | persistent concurrent revocation tests | Preliminary local evidence |
-| Human gates prevent unauthorized execution | bypass and race-condition suite | Preliminary simulated evidence |
+| Holder binding prevents token replay | replay attack experiments | Stage A adversarial (v0.2): deterministic — bearer reuse, forged proof-of-possession, expiry, scope/tenant tamper and audience confusion all blocked at the expected check; concurrency/timing not yet exercised |
+| Revocation terminates active authority | persistent concurrent revocation tests | Stage A adversarial (v0.2): in-session reuse-after-revoke deterministically blocked; persistent + concurrent revocation still pending (durable revocation is the separate persistence arm) |
+| Human gates prevent unauthorized execution | bypass and race-condition suite | Stage A adversarial (v0.2): agent self-approval, impostor-agent, cross-tenant, unknown-approver and denied-action approval all blocked; a prior self-approval gap was closed; race-condition/concurrency suite still pending |
 | Context broker preserves utility | task success vs disclosure analysis | Not established |
-| Evidence chain enables reconstruction | restart, tamper and restore experiments | Database-enforced (v0.1): re-verifies after fresh connection and logical restore; tamper detected by hash chain + append-only table |
+| Evidence chain enables reconstruction | restart, tamper and restore experiments | Database-enforced (v0.1) + Stage A adversarial (v0.2): re-verifies after a fresh connection and a logical restore; four in-process tamper classes (content, link, re-sign, splice) each detected at the expected seq; full physical restart/pg_restore still pending |
 | Tenant isolation holds | database, cache, vector and backup tests | Database RLS-enforced (v0.1): direct-query, missing-context, forged-id and evidence isolation tested; cache/vector/full-backup isolation pending |
 | Gateway reduces injection success | large attack corpus and ablation | One/few heuristic cases |
 | Continuum is model-independent | multiple real model/provider evaluations | Not established |
@@ -41,5 +42,11 @@ paper's claim strength, subordinate to [`../../docs/CLAIMS.md`](../../docs/CLAIM
   evidence hash chain re-verifies from storage after a fresh connection and after
   a logical restore; not yet exercised under a full cluster stop/start or a
   physical (pg_dump/pg_restore) cycle.
+- **Stage A adversarial (v0.2)** — exercised by the deterministic control-plane
+  adversarial suite (`research/sif-bench/STAGE_A_BASELINE.md`): every attack is a
+  fixed construction that must be blocked *and* fail for the expected reason, with
+  positive controls guarding against over-blocking. It is single-process and
+  deterministic: it does **not** establish concurrency/timing, persistence-tier,
+  or any model/corpus behaviour.
 - **One/few heuristic cases** — the pattern-based screen blocks known cases;
   requires a large adversarial corpus and an ablation to characterise.
