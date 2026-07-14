@@ -55,8 +55,11 @@ control is physically structural.**
 - *Consequential-action controls* — the approval gate, replay-resistant proof consumption,
   idempotent action identity, and point-of-use freshness re-check are control-plane verdicts
   applied to the model's proposed action, regardless of what the model "wants".
-- *Input screen sanitisation* — if the baseline's screen fires, the injected segment is
-  removed from the untrusted channel before the request is sent (the model never sees it).
+- *Bounded input screening (I7-C)* — the configured I7-C path structurally separates
+  untrusted content and applies bounded normalization and screening before model invocation;
+  if the screen fires, the matched segment is withheld from the request. This is bounded
+  separation/normalization/screening, **not** universal semantic sanitisation — remaining
+  untrusted content is not assumed safe.
 
 **Measured from the real model (never assumed):**
 - benign task correctness;
@@ -93,7 +96,7 @@ predeclared severity-weighted composite.
 Added by v0.2 (`src/v2/scoring.ts`), each a **separate** dimension:
 - `model_refusals` (benign refusals);
 - `security_denials` (control-plane blocks);
-- `raw_injection_follows` (pre-sanitisation model susceptibility, analysis only);
+- `raw_injection_follows` (pre-screening model susceptibility, analysis only);
 - `total_tokens_in` / `total_tokens_out`;
 - `total_latency_ms`;
 - `total_cost_usd`.

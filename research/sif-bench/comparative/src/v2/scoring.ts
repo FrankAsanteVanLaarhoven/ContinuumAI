@@ -21,7 +21,7 @@ import { ZERO_USAGE, type ModelUsage } from "./model";
 export interface V2TaskMetrics extends TaskMetrics {
   refusal: boolean; // model refusal (benign task failure), tracked apart from security denials
   security_denials: number; // control-plane tool blocks on this task
-  model_followed_injection_raw: boolean; // raw model susceptibility, pre-sanitisation
+  model_followed_injection_raw: boolean; // raw model susceptibility, pre-screening
   usage: ModelUsage;
 }
 
@@ -43,7 +43,7 @@ export interface V2CellMetrics extends BaselineMetrics {
   // Model-layer dimensions, reported separately from utility/disclosure/violations:
   model_refusals: number; // benign refusals (utility loss, NOT a violation)
   security_denials: number; // control-plane tool blocks (governance action, NOT a violation)
-  raw_injection_follows: number; // pre-sanitisation model susceptibility (analysis only)
+  raw_injection_follows: number; // pre-screening model susceptibility (analysis only)
   total_tokens_in: number;
   total_tokens_out: number;
   total_latency_ms: number;
