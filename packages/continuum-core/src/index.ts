@@ -20,3 +20,4 @@ export * from "./slice";
 export * from "./adversary";
 export * from "./interventions/entitlement";
 export * from "./interventions/metadata";
+export * from "./interventions/freshness";

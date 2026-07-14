@@ -35,8 +35,12 @@ must not exceed it.
   and idempotency were open gaps. Absence of a finding is bounded by that sample.
   Of those, app-cooperative RLS re-keying (GAP-5) and action idempotency (GAP-6)
   have since been remediated under separately-evaluated matched-arm interventions
-  (I5, I6), bounded to their evaluated domain and failure model; authorization
-  staleness (GAP-3) and PoP replay (GAP-4) remain open.
+  (I5, I6), bounded to their evaluated domain and failure model. Authorization
+  staleness (GAP-3) has been closed for its four tested dimensions (consent, policy
+  version, risk ceiling, object lifecycle) **at the disclosure/model-call point of
+  use** under intervention I3's evaluated freshness arms — bounded to that boundary
+  (the action-execution re-validation facet and concurrent propagation are not
+  exercised); PoP replay (GAP-4) remains open.
 
 ## Evidence discipline
 

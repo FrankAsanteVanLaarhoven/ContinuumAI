@@ -67,6 +67,7 @@ import {
   type BoundMetaResult,
   type MetadataProjection,
 } from "./interventions/metadata";
+import { consentDigest, type FreshnessMode } from "./interventions/freshness";
 
 const CANARY = "GB29NWBK60161331926819"; // the apex bank_iban — must never leak
 
@@ -160,10 +161,12 @@ export class ContinuumEngine {
   private egressCanaryBlocked = 0;
 
   private readonly entitlementMode: EntitlementMode;
+  private readonly freshnessMode: FreshnessMode;
 
-  constructor(store?: Store, opts?: { entitlementMode?: EntitlementMode }) {
+  constructor(store?: Store, opts?: { entitlementMode?: EntitlementMode; freshnessMode?: FreshnessMode }) {
     this.store = store ?? createSeededStore();
     this.entitlementMode = opts?.entitlementMode ?? "off";
+    this.freshnessMode = opts?.freshnessMode ?? "off";
     this.ledger = new EvidenceLedger(
       this.store.platform.privateKeyPem,
       this.store.platform.publicKeyPem,
@@ -178,6 +181,43 @@ export class ContinuumEngine {
       token.entitlement_version !== undefined &&
       token.entitlement_version !== this.store.entitlements?.version
     );
+  }
+
+  /**
+   * I3: is the authority snapshot stale at point of use? Returns a denial reason or
+   * null. `version` re-checks the bound policy version + consent digest;
+   * `transactional` additionally re-evaluates the risk ceiling and object lifecycle
+   * against current state. Off (or an unbound token) is always fresh — the frozen
+   * path is unchanged.
+   */
+  private freshnessStale(token: SignedSCT["token"]): string | null {
+    if (this.freshnessMode === "off") return null;
+    // Version anchors (both modes).
+    if (
+      token.freshness_policy_version !== undefined &&
+      token.freshness_policy_version !== this.store.config.policy_version
+    ) {
+      return "policy_version_stale: policy version rotated since issuance";
+    }
+    if (
+      token.freshness_consent_digest !== undefined &&
+      token.freshness_consent_digest !== consentDigest(this.store, token.subject, token.purpose)
+    ) {
+      return "consent_stale: consent changed since issuance";
+    }
+    if (this.freshnessMode === "transactional") {
+      const intent = this.intents.get(token.intent_id);
+      if (intent !== undefined && intent.risk_score > this.store.config.risk_threshold) {
+        return "risk_ceiling_stale: risk gate tightened since issuance";
+      }
+      for (const rid of token.resources) {
+        const obj = this.store.memory.get(rid);
+        if (obj === undefined || obj.revocation_state === "revoked" || obj.deletion_state === "deleted") {
+          return `object_lifecycle_stale: ${rid} revoked/deleted since issuance`;
+        }
+      }
+    }
+    return null;
   }
 
   // --- read-only accessors (never leak private keys) -----------------------
@@ -491,6 +531,12 @@ export class ContinuumEngine {
                 entitlementDigest: entitlementDigest(this.store.entitlements!),
               }
             : {}),
+          ...(this.freshnessMode !== "off"
+            ? {
+                freshnessPolicyVersion: this.store.config.policy_version,
+                freshnessConsentDigest: consentDigest(this.store, intent.owner_id, intent.purpose),
+              }
+            : {}),
         },
         this.store.platform.privateKeyPem,
       );
@@ -598,6 +644,17 @@ export class ContinuumEngine {
       verification.denied_reason = "entitlement_current: entitlement revoked/rotated since issuance";
     }
 
+    // I3: reject a live capability whose authority snapshot has gone stale
+    // (consent/policy/risk/object-lifecycle re-evaluated at point of use).
+    if (verification.valid) {
+      const staleReason = this.freshnessStale(signed.token);
+      if (staleReason !== null) {
+        verification.valid = false;
+        verification.checks.push({ name: "authority_fresh", satisfied: false, detail: staleReason });
+        verification.denied_reason = staleReason;
+      }
+    }
+
     this.canaryTrials += 1;
     let disclosure: DisclosurePackage | null = null;
     let canaryPresent = false;
@@ -681,6 +738,15 @@ export class ContinuumEngine {
     if (verification.valid && this.entitlementStale(signed.token)) {
       verification.valid = false;
       verification.denied_reason = "entitlement_current: entitlement revoked/rotated since issuance";
+    }
+
+    // I3: reject a live capability whose authority snapshot has gone stale.
+    if (verification.valid) {
+      const staleReason = this.freshnessStale(signed.token);
+      if (staleReason !== null) {
+        verification.valid = false;
+        verification.denied_reason = staleReason;
+      }
     }
 
     if (!verification.valid) {

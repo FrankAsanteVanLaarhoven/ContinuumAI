@@ -40,6 +40,10 @@ export interface SovereignCapabilityToken {
    *  entitlement-enforcing mode issued the token (keeps default signatures identical). */
   entitlement_version?: string;
   entitlement_digest?: string;
+  /** Intervention I3 — bound freshness anchors (policy version + consent digest).
+   *  Absent unless a freshness mode issued the token (keeps default signatures identical). */
+  freshness_policy_version?: string;
+  freshness_consent_digest?: string;
 }
 
 export interface SignedSCT {
@@ -71,6 +75,9 @@ export interface IssueParams {
   /** Optional entitlement binding (intervention I1). */
   entitlementVersion?: string;
   entitlementDigest?: string;
+  /** Optional freshness binding (intervention I3). */
+  freshnessPolicyVersion?: string;
+  freshnessConsentDigest?: string;
 }
 
 /** Issue and sign a capability token. */
@@ -109,6 +116,10 @@ export function issueSCT(
   if (params.entitlementVersion !== undefined && params.entitlementDigest !== undefined) {
     token.entitlement_version = params.entitlementVersion;
     token.entitlement_digest = params.entitlementDigest;
+  }
+  if (params.freshnessPolicyVersion !== undefined && params.freshnessConsentDigest !== undefined) {
+    token.freshness_policy_version = params.freshnessPolicyVersion;
+    token.freshness_consent_digest = params.freshnessConsentDigest;
   }
   const signature = signEd25519(platformPrivateKeyPem, canonicalJson(token));
   return { token, signature };

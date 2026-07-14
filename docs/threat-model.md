@@ -69,7 +69,17 @@ boundary is honest, and to be fixed as separately-measured interventions:
   action) is re-checked at point of use for signature/expiry/revocation/PoP but
   **not** for consent, policy version, or object lifecycle within its TTL/gate
   window (concurrency `C1-02/03/05/11`, `C2-06`). Point-of-use revocation and
-  expiry **are** enforced.
+  expiry **are** enforced. _Remediated at the disclosure / model-call point of use
+  under the evaluated freshness arms — intervention **I3**
+  (`research/sif-bench/interventions/i3/I3_RESULTS.md`): with a freshness mode
+  active the capability binds the policy version and a consent digest and
+  re-evaluates at use. I3-A reproduces the gap (4/4 staleness dimensions still
+  released); I3-B re-checks the bound policy version + consent (2/4); I3-C
+  additionally re-evaluates the risk ceiling and object lifecycle against current
+  state (0/4), with **zero false denials** on the unchanged-authority control.
+  Bounded to those four dimensions at the disclose/model boundary; the
+  action-execution re-validation facet and concurrent / eventually-consistent
+  propagation are not exercised._
 - **GAP-4** — a captured proof-of-possession `(challenge, signature)` is
   replayable within the TTL; challenge freshness/single-use is not enforced
   (`C1-10`).
