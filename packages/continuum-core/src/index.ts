@@ -19,3 +19,4 @@ export * from "./engine";
 export * from "./slice";
 export * from "./adversary";
 export * from "./interventions/entitlement";
+export * from "./interventions/metadata";

@@ -58,6 +58,15 @@ import {
   type EffectiveScope,
   type EntitlementMode,
 } from "./interventions/entitlement";
+import {
+  auditScope,
+  opaqueHandle,
+  projectMeta,
+  PROJECTION_FIELDS,
+  type BoundMetaAudit,
+  type BoundMetaResult,
+  type MetadataProjection,
+} from "./interventions/metadata";
 
 const CANARY = "GB29NWBK60161331926819"; // the apex bank_iban — must never leak
 
@@ -186,6 +195,152 @@ export class ContinuumEngine {
       const { content: _omit, ...meta } = m;
       return meta;
     });
+  }
+
+  /**
+   * Intervention I2 — caller-bound metadata accessor (closes GAP-2).
+   *
+   * Unlike `listMemoryMeta(tenantId)`, the caller supplies NO tenant. Tenant and
+   * principal are derived from a verified, holder-proven capability; intent and
+   * purpose are bound to the token; scope is the token's operations; and the
+   * returned fields are limited to the requested projection. A capability for one
+   * tenant therefore cannot enumerate another's objects, and a stolen or expired
+   * token, a non-holder presenter, or a repurposed capability all fail closed.
+   */
+  listMemoryMetaBound(
+    req: {
+      tokenId: string;
+      presenter?: { principalId: string; challenge: string } | null;
+      assertedIntentId?: string;
+      assertedPurpose?: string;
+      projection?: MetadataProjection;
+    },
+    nowMs = Date.now(),
+  ): BoundMetaResult {
+    const projection: MetadataProjection = req.projection ?? "standard";
+    const signed = this.tokens.get(req.tokenId);
+
+    const deny = (
+      capId: string,
+      tenant: string | null,
+      principal: string | null,
+      intent: string | null,
+      purpose: string | null,
+      entV: string | null,
+      reason: string,
+      holderProof: BoundMetaAudit["holder_proof"],
+    ): BoundMetaResult => {
+      const audit: BoundMetaAudit = {
+        authenticated_principal: principal,
+        capability_id: capId,
+        holder_proof: holderProof,
+        derived_tenant: tenant,
+        intent_id: intent,
+        purpose,
+        requested_projection: projection,
+        effective_projection: null,
+        returned_object_count: 0,
+        returned_field_set: [],
+        policy_version: this.store.config.policy_version,
+        entitlement_version: entV,
+        decision: "deny",
+        denial_reason: reason,
+      };
+      const ev = this.emit({
+        tenant_id: tenant ?? "unknown",
+        owner_id: signed?.token.subject ?? "unknown",
+        principal: principal ?? "unknown",
+        event_type: "context.metadata.list.denied",
+        intent_id: intent,
+        capability_id: capId,
+        decision: reason,
+        scope: auditScope(audit),
+        nowMs,
+      });
+      return { permit: false, items: [], audit, evidence_event_id: ev.event_id };
+    };
+
+    if (!signed) {
+      return deny(req.tokenId, null, null, null, null, null, "capability_unknown: no such capability", "absent");
+    }
+    const token = signed.token;
+    const entV = token.entitlement_version ?? null;
+
+    // Proof of possession — a presenter who is not the holder cannot use the token.
+    const presenterKeys = req.presenter ? this.store.agentKeys.get(req.presenter.principalId) : undefined;
+    const pop =
+      req.presenter && presenterKeys
+        ? {
+            challenge: req.presenter.challenge,
+            signature: signEd25519(presenterKeys.privateKeyPem, popMessage(token, req.presenter.challenge)),
+          }
+        : null;
+    const verification = verifySCT(signed, {
+      platformPublicKeyPem: this.store.platform.publicKeyPem,
+      nowMs,
+      revokedHandles: this.revoked,
+      audience: null,
+      pop,
+    });
+    if (verification.valid && this.entitlementStale(token)) {
+      verification.valid = false;
+      verification.denied_reason = "entitlement_current: entitlement revoked/rotated since issuance";
+    }
+    const holderProof: BoundMetaAudit["holder_proof"] =
+      pop === null ? "absent" : verification.checks.find((c) => c.name === "holder_pop")?.satisfied ? "valid" : "invalid";
+
+    if (!verification.valid) {
+      return deny(token.token_id, token.tenant_id, token.actor, token.intent_id, token.purpose, entV, verification.denied_reason ?? "capability_invalid", holderProof);
+    }
+
+    // Intent / purpose binding — a valid capability may not be silently repurposed.
+    if (req.assertedIntentId !== undefined && req.assertedIntentId !== token.intent_id) {
+      return deny(token.token_id, token.tenant_id, token.actor, token.intent_id, token.purpose, entV, `intent_binding: capability bound to ${token.intent_id}`, holderProof);
+    }
+    if (req.assertedPurpose !== undefined && req.assertedPurpose !== token.purpose) {
+      return deny(token.token_id, token.tenant_id, token.actor, token.intent_id, token.purpose, entV, `purpose_binding: capability bound to ${token.purpose}`, holderProof);
+    }
+
+    // Authority is DERIVED, never supplied: tenant + principal come from the token.
+    const derivedTenant = token.tenant_id;
+    const principal = token.actor;
+    const scope = new Set(token.operations);
+    const candidates = candidatesForTenant(this.store, derivedTenant).filter((m) => scope.has(m.read_operation));
+    const items = candidates.map((m) => projectMeta(m, projection, token.token_id));
+    const fieldSet = items.length
+      ? [...new Set(items.flatMap((it) => Object.keys(it)))].sort()
+      : projection === "full"
+        ? []
+        : [...PROJECTION_FIELDS[projection]];
+
+    const audit: BoundMetaAudit = {
+      authenticated_principal: principal,
+      capability_id: token.token_id,
+      holder_proof: holderProof,
+      derived_tenant: derivedTenant,
+      intent_id: token.intent_id,
+      purpose: token.purpose,
+      requested_projection: projection,
+      effective_projection: projection,
+      returned_object_count: items.length,
+      returned_field_set: fieldSet,
+      policy_version: this.store.config.policy_version,
+      entitlement_version: entV,
+      decision: "permit",
+      denial_reason: null,
+    };
+    const ev = this.emit({
+      tenant_id: derivedTenant,
+      owner_id: token.subject,
+      principal,
+      event_type: "context.metadata.listed",
+      intent_id: token.intent_id,
+      capability_id: token.token_id,
+      disclosed_objects: candidates.map((m) => opaqueHandle(token.token_id, m.memory_id)),
+      scope: auditScope(audit),
+      nowMs,
+    });
+    return { permit: true, items, audit, evidence_event_id: ev.event_id };
   }
 
   tenants() {
