@@ -33,6 +33,10 @@ must not exceed it.
   **staleness** within a capability's TTL/gate window (consent, policy version,
   object lifecycle not re-evaluated), PoP replay, app-cooperative RLS re-keying,
   and idempotency were open gaps. Absence of a finding is bounded by that sample.
+  Of those, app-cooperative RLS re-keying (GAP-5) and action idempotency (GAP-6)
+  have since been remediated under separately-evaluated matched-arm interventions
+  (I5, I6), bounded to their evaluated domain and failure model; authorization
+  staleness (GAP-3) and PoP replay (GAP-4) remain open.
 
 ## Evidence discipline
 

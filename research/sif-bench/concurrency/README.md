@@ -69,6 +69,13 @@ Security outcomes — including the 10 documented gaps — are **recorded**, not
 gated. A reproducible race failure is evidence, not a test failure. Nothing here
 weakens a lock, permission, gate, or test to go green.
 
+Of the gaps this suite surfaced, four now have separately-evaluated matched-arm
+interventions, each measured against these frozen baselines: **I1** (GAP-1,
+entitlement-bound scope), **I2** (GAP-2, caller-bound metadata), **I5** (GAP-5,
+database-bound tenant identity), and **I6** (GAP-6, idempotent action identity).
+GAP-3 (authorization staleness) and GAP-4 (PoP replay) remain open. These
+interventions do not modify this suite.
+
 ## Boundary
 
 No external model calls, no nondeterministic network dependencies. PostgreSQL

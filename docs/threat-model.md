@@ -75,9 +75,20 @@ boundary is honest, and to be fixed as separately-measured interventions:
   (`C1-10`).
 - **GAP-5** — RLS isolation is app-cooperative: the `continuum_app` role may
   re-key `app.current_tenant` mid-transaction via `set_config`; nothing at the DB
-  privilege layer prevents it (`C3-06`).
+  privilege layer prevents it (`C3-06`). _Remediated under the evaluated
+  database-bound tenant-identity arms — intervention **I5**
+  (`research/sif-bench/interventions/i5/I5_RESULTS.md`): a trusted SECURITY DEFINER
+  wrapper resolves the tenant from an authoritative mapping and stamps a
+  tamper-evident lock, so a re-key reads nothing. Superuser bypass remains a
+  documented non-goal._
 - **GAP-6** — no idempotency on client-supplied action ids; a reused id
-  overwrites rather than deduplicates (`C2-11`).
+  overwrites rather than deduplicates (`C2-11`). _Remediated under the evaluated
+  bound arms — intervention **I6**
+  (`research/sif-bench/interventions/i6/I6_RESULTS.md`): server-issued action
+  identity + a caller idempotency key + a canonical request digest prevent silent
+  overwrite, duplicate creation and duplicate execution; I6-C rejects
+  same-key/different-request conflicts. Effectively-once within the evaluated
+  single-instance domain and failure model, not distributed exactly-once._
 
 Held under the tested interleavings (bounded, seed `0xC0FFEE`, ≤ 2 workers):
 post-revocation disclosure 0, human-gate bypass 0, cross-tenant observation 0,
