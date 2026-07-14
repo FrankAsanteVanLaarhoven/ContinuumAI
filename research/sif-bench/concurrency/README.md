@@ -69,15 +69,17 @@ Security outcomes — including the 10 documented gaps — are **recorded**, not
 gated. A reproducible race failure is evidence, not a test failure. Nothing here
 weakens a lock, permission, gate, or test to go green.
 
-Of the gaps this suite surfaced, five now have separately-evaluated matched-arm
+All six gaps this suite surfaced now have separately-evaluated matched-arm
 interventions, each measured against these frozen baselines: **I1** (GAP-1,
 entitlement-bound scope), **I2** (GAP-2, caller-bound metadata), **I3** (GAP-3,
-point-of-use authorization freshness), **I5** (GAP-5, database-bound tenant
-identity), and **I6** (GAP-6, idempotent action identity). I3 closes the four
-tested staleness dimensions at the disclosure/model-call boundary; the
-action-execution facet (`C2-06`) and concurrent propagation are not exercised, so
-GAP-3 is not fully retired here. GAP-4 (PoP replay) remains open. These
-interventions do not modify this suite.
+point-of-use authorization freshness), **I4** (GAP-4, proof-of-possession replay
+resistance), **I5** (GAP-5, database-bound tenant identity), and **I6** (GAP-6,
+idempotent action identity). I3 closes the four tested staleness dimensions at the
+disclosure/model-call boundary; the action-execution facet (`C2-06`) and concurrent
+propagation are not exercised, so GAP-3 is not fully retired here. I4 closes the
+tested replay (`C1-10`), concurrent double-spend, and proof-lift vectors under a
+single-instance transactional replay ledger; cross-node ledger consistency is not
+exercised. These interventions do not modify this suite.
 
 ## Boundary
 

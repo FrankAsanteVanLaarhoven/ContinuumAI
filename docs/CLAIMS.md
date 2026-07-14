@@ -40,7 +40,11 @@ must not exceed it.
   version, risk ceiling, object lifecycle) **at the disclosure/model-call point of
   use** under intervention I3's evaluated freshness arms — bounded to that boundary
   (the action-execution re-validation facet and concurrent propagation are not
-  exercised); PoP replay (GAP-4) remains open.
+  exercised). PoP replay (GAP-4) has been closed for its tested sequential-replay,
+  concurrent-double-spend and proof-lift vectors under intervention I4's evaluated
+  single-instance transactional-replay-ledger arms — bounded to that ledger and
+  failure model (holder-key compromise, transport/endpoint capture, and cross-node
+  ledger consistency are out of scope).
 
 ## Evidence discipline
 

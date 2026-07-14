@@ -10,6 +10,7 @@
     "packages/*",
     "apps/*",
     "research/sif-bench/concurrency",
+    "research/sif-bench/interventions/i4",
     "research/sif-bench/interventions/i5",
     "research/sif-bench/interventions/i6"
   ],
@@ -27,6 +28,7 @@
     "intervention:i1": "npm run test -w @continuum/core -- src/interventions/i1.test.ts",
     "intervention:i2": "npm run test -w @continuum/core -- src/interventions/i2.test.ts",
     "intervention:i3": "npm run test -w @continuum/core -- src/interventions/i3.test.ts",
+    "intervention:i4": "npm run test -w @continuum/sif-i4",
     "intervention:i5": "npm run test -w @continuum/sif-i5",
     "intervention:i6": "npm run test -w @continuum/sif-i6",
     "build": "npm run build --workspaces --if-present",

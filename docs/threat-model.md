@@ -82,7 +82,17 @@ boundary is honest, and to be fixed as separately-measured interventions:
   propagation are not exercised._
 - **GAP-4** — a captured proof-of-possession `(challenge, signature)` is
   replayable within the TTL; challenge freshness/single-use is not enforced
-  (`C1-10`).
+  (`C1-10`). _Remediated under the evaluated single-instance replay-ledger arms —
+  intervention **I4** (`research/sif-bench/interventions/i4/I4_RESULTS.md`): a
+  server-issued nonce is consumed exactly once via a transactional ledger
+  (`INSERT ... ON CONFLICT (token_id, nonce) DO NOTHING`), closing sequential
+  replay and concurrent double-spend (I4-B); and the proof is bound to the request
+  digest, capability id and audience, closing a fresh-nonce proof lifted onto a
+  different operation (I4-C, lifts 3/3 → 0/3). I4-A reproduces the gap; zero false
+  denials on the benign control; expiry/non-holder/missing controls hold under
+  every arm. Bounded to the single-instance ledger and failure model — holder-key
+  compromise, transport/endpoint capture, and cross-node ledger consistency are
+  out of scope._
 - **GAP-5** — RLS isolation is app-cooperative: the `continuum_app` role may
   re-key `app.current_tenant` mid-transaction via `set_config`; nothing at the DB
   privilege layer prevents it (`C3-06`). _Remediated under the evaluated
