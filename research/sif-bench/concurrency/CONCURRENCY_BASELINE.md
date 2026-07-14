@@ -18,7 +18,20 @@ npm run sif-bench:concurrency
   valid controls**. **1 seed**, workers up to **2**, deterministic interleavings.
 - **0 false-failures** on valid controls — permitted concurrency and sequential
   work were never refused, so no "held" result is an artefact of over-blocking.
-- Every gap is preserved as a regression fixture under `fixtures/`.
+- Every failing case is preserved as a regression fixture under `fixtures/`.
+
+**Counts — kept distinct (do not conflate):**
+
+```
+Independent security findings : 6   (GAP-1 … GAP-6)
+Reproducible failing fixtures : 10  (adversarial cases classified "gap")
+Concurrency test families     : 4   (C1–C4)
+Concurrency suite tests       : 6
+```
+
+The 10 failing fixtures map onto the 6 findings: GAP-3 (staleness) accounts for
+five fixtures (`C1-02/03/05/11`, `C2-06`); GAP-1, GAP-2, GAP-4, GAP-5, GAP-6 one
+each. "10/48" below is a **case-level** rate, not a count of independent findings.
 
 ## Global result
 
@@ -34,11 +47,17 @@ npm run sif-bench:concurrency
 | Chain-Fork Rate | **0** |
 | Missing-Material-Event Rate | **0** |
 | False-Failure Rate (valid concurrent controls) | **0** |
-| Revocation overrun p50/p95/p99 (n=1) | 1.05 / 1.05 / 1.05 ms |
-| Gate-to-execution p50/p95/p99 (n=12) | 0.08 / 0.19 / 0.19 ms |
+| Revocation-race observations | **1** (single observation — see below) |
+| Gate-to-execution latency (n=12) | median 0.08 ms, max 0.19 ms |
 
-Revocation "overrun" here is just the point-of-use check latency, not a window of
-continued access: the check refuses immediately (see C1-07).
+**Revocation overrun:** one measured revocation-race observation was refused at
+point of use with an observed overrun of **1.05 ms**. With n=1 this is a single
+observation, **not** a percentile distribution — p50/p95/p99 would all be the same
+number and carry no distributional evidence. Percentiles begin only after enough
+repeated trials (deferred to the concurrency stress expansion). The "overrun" is
+the check latency, not a window of continued access: the check refuses
+immediately (see C1-07). Gate-to-execution has n=12, so a median and max are
+reported rather than fabricated tail percentiles.
 
 | Family | Adversarial | Gaps | Held | Not-realizable | RESR |
 |--------|-------------|------|------|----------------|------|
