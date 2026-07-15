@@ -47,9 +47,28 @@ Trigger: the audit confirms the console bypasses PostgreSQL — it does.
 Build the **smallest** adapter that connects the **existing** persistence package to the
 live path. It **must**:
 
-- Implement the existing core `Store` interface (reconciling the synchronous, `Map`-based
-  contract with async Postgres — load tenant-scoped state per request, or evolve the
-  interface to async; decide in review).
+> **Delivery status.** Increment 1 (Steps A–B) is implemented under
+> `packages/continuum-core/src/async/`: the async `ContinuumStore`/`ContinuumTransaction`
+> contract, `RequestContext` (tenant derived by the boundary, never caller-passed), the
+> config gate (`resolveStoreMode`, fail-closed in production, no silent fallback), the
+> `InMemoryAsyncStore` research adapter (delegates to the frozen engine → identical
+> semantics), the `AsyncContinuumEngine`, and contract/config/import-boundary suites.
+> Held for interface review. Increment 2 (Steps C–E) — `PostgresStore` over the existing
+> schema, console/API wiring, and the real-DB RLS/restart/evidence-durability tests —
+> follows after this contract is reviewed.
+
+**Store-boundary decision (settled): make the production engine asynchronous end to end.**
+Per-request Map hydration of PostgreSQL state was **rejected** — it would reintroduce the very
+TOCTOU/freshness failure modes that I3 and the concurrency suite exist to catch (authorization
+on stale snapshots; revocation/consent races between hydration and use), weaken transactional
+RLS once data leaves the database boundary, and lose bounded/streaming retrieval. Instead an
+asynchronous `ContinuumStore`/`ContinuumTransaction` contract is used; the synchronous
+in-memory store remains ONLY as a deterministic research/test adapter implementing that same
+async contract with immediately-resolved promises.
+
+- Implement the async `ContinuumStore` contract over the existing persistence package
+  (`PostgresStore`), every security-relevant read/check/write/evidence-append inside one
+  shared transaction.
 - Reuse existing migrations, RLS policies, least-privilege role, append-only evidence.
 - Use database-bound tenant identity; preserve I1–I7 invariants and chain semantics.
 - Be selected by explicit config and **fail closed** in production:
