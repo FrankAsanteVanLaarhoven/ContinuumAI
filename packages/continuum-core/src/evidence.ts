@@ -124,6 +124,24 @@ export class EvidenceLedger {
     return this.entries.length;
   }
 
+  /**
+   * Resume an append-only ledger from a durably-persisted chain (GAP-4:
+   * restart-safe continuation for a PostgreSQL-backed write path). The prior
+   * chain is verified against the platform public key BEFORE it is adopted; a
+   * broken or foreign-signed chain is rejected and NOT adopted (fail-closed), so
+   * a corrupted store can never be silently extended. On success, subsequent
+   * `append()` continues `seq` and `prev_hash` from the last persisted envelope.
+   *
+   * Additive: an empty ledger (the frozen path) never calls this, so existing
+   * chains remain byte-identical.
+   */
+  resume(priorEntries: EvidenceEnvelope[]): ChainVerification {
+    const verification = verifyEnvelopeChain(priorEntries, this.platformPublicKeyPem);
+    if (!verification.valid) return verification;
+    this.entries = priorEntries.map((e) => ({ ...e }));
+    return verification;
+  }
+
   /** Recompute the whole chain: links, hashes, and signatures. */
   verifyChain(): ChainVerification {
     return verifyEnvelopeChain(this.entries, this.platformPublicKeyPem);
