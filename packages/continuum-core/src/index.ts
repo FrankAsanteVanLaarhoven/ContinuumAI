@@ -22,3 +22,4 @@ export * from "./interventions/entitlement";
 export * from "./interventions/metadata";
 export * from "./interventions/freshness";
 export * from "./stageb/normalize";
+export * from "./async";
