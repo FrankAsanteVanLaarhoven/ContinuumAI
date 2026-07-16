@@ -382,3 +382,41 @@ deployment-gated.
 **Non-goals (S4C).** No real IdP configuration/SDK/credentials, refresh tokens, UI
 redesign, workload identity, break-glass, deployment, HTTP SIF-Bench v0.2, or
 production-readiness claim.
+
+## Phase 3 S4D — real-provider onboarding & interoperability qualification (PLANNED — UNIMPLEMENTED)
+
+**Status: SPECIFICATION ONLY. No implementation, provider, credential, registration, or
+provider traffic exists.** This section records the *planned* trust boundary so it is
+visible in the model; it is explicitly **not** yet realized. See
+`PHASE3_S4D_PROVIDER_QUALIFICATION_SPEC.md` and `PHASE3_S4D_QUALIFICATION_CHECKLIST.md`.
+
+Planned transition (owner of each decision in brackets):
+
+```
+browser → authorization endpoint [S4C + trusted client registry] → provider authN [external]
+→ callback [S4C host/origin] → S4B one-time consume [S4B] → token endpoint [real exchanger]
+→ S4A verify [S4A] → S3 map [S3] → S3 session [S3] → S2B tenant derivation [S2B]
+```
+
+The provider will establish only an external identity **assertion**. It will NOT
+establish Continuum tenant authority, roles, intent, capability scope, consent, memory
+access, or action permission — S2B remains the sole tenant-authority transition.
+
+| Planned threat / misuse (S4D) | Planned control | Status |
+|-------------------------------|-----------------|--------|
+| Assertion-controlled endpoint/issuer discovery | pin issuer/endpoints/audience/algorithms; discovery validated against pinned expectations, never widening | PLANNED — unimplemented |
+| Wildcard / reused redirect registration | exact-match redirect allowlist; separate dev/qualification/production registrations; qualification never reuses production | PLANNED — unimplemented |
+| Real user / sensitive data exposure | synthetic identities only; no real client/employee/health/financial/research/asylum data; provider training-use terms reviewed | PLANNED — unimplemented |
+| Silent fallback to deterministic auth | fail closed; deterministic local server/fixture never selected as a fallback for a failed real exchange | PLANNED — unimplemented |
+| Refresh-token custody risk | no offline_access requested, no refresh token stored; deferred to a separate milestone | PLANNED — unimplemented |
+| Credential leakage | secret-manager/env reference only; never in Git/logs/evidence/browser/tests; rotation + emergency revocation | PLANNED — unimplemented |
+| Unbounded provider traffic / cost | pinned ceilings (users/logins/exchanges/JWKS/retries/duration/cost); breach halts + re-engages kill switch | PLANNED — unimplemented |
+| Uncontrolled execution | kill switch (10 preconditions) blocks all traffic until met + reviewer sign-off; remains available during qualification | PLANNED — unimplemented |
+| Secret leakage in evidence | redacted evidence (safe ids + digests); never raw code/token/state/nonce/verifier/credential/callback-URL | PLANNED — unimplemented |
+
+**Claim boundary (S4D).** The repository may state only that Continuum *defines a reviewed
+real-provider onboarding and interoperability qualification protocol*. It must NOT state
+that a provider is integrated, that interoperability is demonstrated, that real login
+works, that key rotation is validated, or that browser authentication is production-ready.
+Qualification, when authorized and executed, yields an interoperability result — never a
+production certification.
