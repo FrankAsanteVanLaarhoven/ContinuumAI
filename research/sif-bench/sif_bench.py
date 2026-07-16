@@ -2,6 +2,14 @@
 """
 SIF-Bench — Sovereign Intent Fabric Benchmark (v0.1 harness).
 
+    HISTORICAL — HTTP SIF-Bench v0.1. Endpoints: /api/state, /api/rerun.
+    Runtime: the RETIRED synchronous slice engine, removed from the console in
+    Phase 2. This harness is PRESERVED for the historical slice result only; its
+    output is NOT evidence for the asynchronous /api/runtime store boundary.
+    Migration to /api/runtime is tracked as HTTP SIF-Bench v0.2 in
+    docs/HTTP_SIFBENCH_MIGRATION.md. Do not reinterpret the v0.1 result as
+    applying to the rewritten runtime.
+
 Drives the running Continuum control plane and measures the milestone tracks the
 v0.1 slice covers. This is a *consistency and invariant* harness over the
 reference slice — it is deliberately scoped, and it reports that scope. It does
