@@ -22,6 +22,10 @@ import {
   issueSCT,
   EvidenceLedger,
   intentInputSchema,
+  evaluateProposal,
+  verifyEd25519,
+  digestOf,
+  canonicalJson,
   type ContinuumStore,
   type ContinuumTransaction,
   type RequestContext,
@@ -44,6 +48,13 @@ import {
   type PolicyConfig,
   type Ed25519Keypair,
   type EvidenceEnvelope,
+  type ActionRecord,
+  type ActionProposal,
+  type AuthorizationDecision,
+  type AuthorizeActionInput,
+  type ActionOutcome,
+  type DiscloseProof,
+  type VerifyResult,
 } from "@continuum/core";
 import { randomUUID } from "node:crypto";
 import { appPool, withTenant, withoutTenant, type DbConfig } from "./pg";
@@ -225,6 +236,8 @@ export interface WriteAuthority {
   readonly registry: ApprovedRegistry;
   /** Policy version, risk threshold, capability TTL (deployment config). */
   readonly config: PolicyConfig;
+  /** Canary tokens whose presence in a disclosure signals an exfiltration attempt. */
+  readonly canaries?: readonly string[];
 }
 
 class PgTransaction implements ContinuumTransaction {
@@ -470,8 +483,98 @@ class PgTransaction implements ContinuumTransaction {
     return { decision, disclosure, capability };
   }
 
-  async discloseForToken(_input: { tokenId: string; challenge?: string }): Promise<DiscloseOutcome> {
-    return pendingReview("discloseForToken");
+  /**
+   * Point-of-use disclosure over Postgres with durable, restart-safe replay
+   * prevention (gate 6). The capability lives in an RLS-scoped, INSERT-only table
+   * written only by the platform's authorizeIntent, so point-of-use verification
+   * checks — from LOSSLESSLY-persisted fields — that the presenter holds the bound
+   * key (PoP), the capability is unexpired and unrevoked, and the (token,challenge)
+   * proof has not been consumed before. A consumed proof is recorded atomically;
+   * replaying the same challenge is denied even across a restart.
+   *
+   * (Exact re-verification of the platform's SCT signature at disclose would
+   * require persisting the canonical token — the capabilities projection is lossy
+   * — and is deferred; the SCT signature is verified at issuance.)
+   */
+  async discloseForToken(input: { tokenId: string; challenge?: string; proof?: DiscloseProof }): Promise<DiscloseOutcome> {
+    const tenant = requireTenant(this.ctx);
+    const auth = this.requireAuthority("discloseForToken");
+    await this.assertPlatformKeyCustody(auth);
+    const challenge = input.challenge ?? "continuum-pop-challenge";
+    const nowMs = this.ctx.issuedAt.getTime();
+
+    const capRes = await this.client.query("SELECT * FROM capabilities WHERE token_id = $1", [input.tokenId]);
+    if (capRes.rows.length === 0) throw new Error(`unknown capability ${input.tokenId}`);
+    const cap = capRes.rows[0];
+
+    const revoked = new Set<string>(
+      (await this.client.query("SELECT revocation_handle FROM revocations")).rows.map((r) => r.revocation_handle as string),
+    );
+
+    const checks: VerifyResult["checks"] = [];
+    const notExpired = nowMs < Date.parse(cap.expires_at);
+    checks.push({ name: "not_expired", satisfied: notExpired, detail: notExpired ? `valid until ${cap.expires_at}` : `expired at ${cap.expires_at}` });
+    const notRevoked = !revoked.has(cap.revocation_handle);
+    checks.push({ name: "not_revoked", satisfied: notRevoked, detail: notRevoked ? "capability live" : "capability revoked" });
+    // popMessage(token, challenge) === `${token_id}:${nonce}:${challenge}`
+    const popMsg = `${cap.token_id}:${cap.nonce}:${challenge}`;
+    const popOk = input.proof ? verifyEd25519(cap.holder_key_pem, popMsg, input.proof.signature) : false;
+    checks.push({
+      name: "holder_pop",
+      satisfied: popOk,
+      detail: popOk ? "holder proved possession of bound key" : input.proof ? "proof-of-possession invalid" : "no proof-of-possession presented",
+    });
+
+    // Replay prevention: consume the proof atomically only if the base gates pass.
+    let notReplayed = false;
+    if (notExpired && notRevoked && popOk) {
+      const ins = await this.client.query(
+        `INSERT INTO consumed_proofs (tenant_id, token_id, challenge, consumed_at)
+         VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+        [tenant, cap.token_id, challenge, new Date(nowMs).toISOString()],
+      );
+      notReplayed = ins.rowCount === 1;
+    }
+    checks.push({ name: "proof_not_replayed", satisfied: notReplayed, detail: notReplayed ? "fresh proof consumed" : "proof already consumed (replay) or gate failed" });
+
+    const valid = notExpired && notRevoked && popOk && notReplayed;
+    const failed = checks.find((c) => !c.satisfied);
+    const verification: VerifyResult = { valid, checks, denied_reason: failed ? `${failed.name}: ${failed.detail}` : null };
+    const ledger = await this.resumeLedger(auth);
+
+    if (!valid) {
+      const env = ledger.append({
+        tenant_id: cap.tenant_id, owner_id: cap.subject, principal: cap.actor,
+        event_type: "context.disclosure.denied", intent_id: cap.intent_id, capability_id: cap.token_id,
+        decision: verification.denied_reason, nowMs,
+      });
+      await this.insertEvidence(env);
+      return { verification, disclosure: null, canaryPresent: false };
+    }
+
+    // Recompute the minimum-necessary disclosure over the token's permitted resources.
+    const resources: string[] = cap.resources;
+    const objs = resources.length
+      ? (await this.client.query(`SELECT ${MEMORY_FULL_COLUMNS} FROM memory_objects WHERE memory_id = ANY($1)`, [resources])).rows.map(rowToMemoryFull)
+      : [];
+    const objectsById = new Map(objs.map((o) => [o.memory_id, o]));
+    const decisionLike: AuthorizationDecision = {
+      intent_id: cap.intent_id, actor_id: cap.actor, tenant_id: cap.tenant_id,
+      policy_version: auth.config.policy_version, policy_digest: "", request_checks: [], request_permit: true,
+      object_decisions: [], permitted_ids: resources, candidate_count: resources.length, timestamp: new Date(nowMs).toISOString(),
+    };
+    const disclosure = computeDisclosure(decisionLike, objectsById);
+    const canaries = auth.canaries ?? [];
+    const canaryPresent = canaries.some((c) => canonicalJson(disclosure.disclosed).includes(c));
+
+    const env = ledger.append({
+      tenant_id: cap.tenant_id, owner_id: cap.subject, principal: cap.actor,
+      event_type: "context.disclosed", intent_id: cap.intent_id, capability_id: cap.token_id,
+      disclosed_objects: resources, disclosure_digest: disclosure.disclosure_digest,
+      model: { provider: "continuum-model-gateway", model_id: cap.audience, version: "2026-06-01" }, nowMs,
+    });
+    await this.insertEvidence(env);
+    return { verification, disclosure, canaryPresent };
   }
 
   async revokeCapability(input: { revocationHandle: string }): Promise<RevocationResult> {
@@ -487,6 +590,74 @@ class PgTransaction implements ContinuumTransaction {
       [tenant, input.revocationHandle, cap.rows[0].token_id, new Date(0).toISOString()],
     );
     return { revoked: true, handle: input.revocationHandle };
+  }
+
+  private async loadActionRecord(actionId: string): Promise<ActionRecord> {
+    const p = (await this.client.query("SELECT * FROM action_proposals WHERE action_id = $1", [actionId])).rows[0];
+    const hs = (await this.client.query("SELECT state, at, note FROM action_transitions WHERE action_id = $1 ORDER BY seq ASC", [actionId])).rows;
+    return {
+      action_id: p.action_id, intent_id: p.intent_id, actor: p.actor, operation: p.operation,
+      action_class: p.action_class, expected_effect: p.expected_effect, reversible: p.reversible,
+      cost_gbp: p.cost_gbp, requires_human_approval: p.requires_human_approval, state: p.state,
+      history: hs.map((h) => ({ state: h.state, at: h.at, note: h.note })), denied_reason: p.denied_reason,
+    };
+  }
+
+  /**
+   * Deny-by-default consequence gate over Postgres, idempotent on the caller-supplied
+   * actionId (gate 6). The frozen evaluateProposal decides; the action is persisted
+   * with ON CONFLICT DO NOTHING so a re-submission after a restart returns the same
+   * record and appends NO new effect or evidence.
+   */
+  async authorizeAction(input: AuthorizeActionInput): Promise<ActionOutcome> {
+    const tenant = requireTenant(this.ctx);
+    const auth = this.requireAuthority("authorizeAction");
+    await this.assertPlatformKeyCustody(auth);
+
+    const iRes = await this.client.query("SELECT * FROM intents WHERE intent_id = $1", [input.intentId]);
+    if (iRes.rows.length === 0) throw new Error(`unknown intent ${input.intentId}`);
+    const intent = rowToIntent(iRes.rows[0]);
+
+    // Idempotency: an already-recorded action is returned unchanged.
+    const prior = await this.client.query("SELECT 1 FROM action_proposals WHERE action_id = $1", [input.actionId]);
+    if (prior.rows.length > 0) {
+      return { action: await this.loadActionRecord(input.actionId), idempotentReplay: true };
+    }
+
+    const nowMs = this.ctx.issuedAt.getTime();
+    const proposal: ActionProposal = {
+      cip: "CIP-006", action_id: input.actionId, intent_id: input.intentId, actor: input.actor,
+      operation: input.operation, action_class: input.actionClass, expected_effect: input.expectedEffect ?? "",
+      risk: 0.3, reversible: input.reversible ?? true, cost_gbp: input.costGbp ?? 0, resources: [],
+    };
+    const record = evaluateProposal(proposal, intent, nowMs);
+
+    const ins = await this.client.query(
+      `INSERT INTO action_proposals (tenant_id, action_id, intent_id, actor, operation, action_class, state, requires_human_approval, expected_effect, reversible, cost_gbp, denied_reason)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (tenant_id, action_id) DO NOTHING`,
+      [tenant, record.action_id, record.intent_id, record.actor, record.operation, record.action_class, record.state, record.requires_human_approval, record.expected_effect, record.reversible, record.cost_gbp, record.denied_reason],
+    );
+    if (ins.rowCount === 0) {
+      // Lost an idempotency race with a concurrent transaction.
+      return { action: await this.loadActionRecord(input.actionId), idempotentReplay: true };
+    }
+
+    let seq = 0;
+    for (const h of record.history) {
+      await this.client.query(
+        `INSERT INTO action_transitions (tenant_id, action_id, seq, state, at, note) VALUES ($1,$2,$3,$4,$5,$6)`,
+        [tenant, record.action_id, seq++, h.state, h.at, h.note],
+      );
+    }
+
+    const ledger = await this.resumeLedger(auth);
+    const env = ledger.append({
+      tenant_id: intent.tenant_id, owner_id: intent.owner_id, principal: record.actor,
+      event_type: record.state === "DENIED" ? "action.denied" : "action.proposed",
+      intent_id: intent.intent_id, decision: record.state, result_digest: digestOf(record), nowMs,
+    });
+    await this.insertEvidence(env);
+    return { action: record, idempotentReplay: false };
   }
 
   async listAuthorizedMemory(): Promise<readonly AuthorizedMemoryMetadata[]> {
@@ -573,8 +744,54 @@ export class PostgresStore implements ContinuumStore {
     return verifyPersistedChain(this.pool, requireTenant(ctx));
   }
 
-  getMetrics(_ctx: RequestContext): Promise<MetricsSnapshot> {
-    return pendingReview("getMetrics");
+  /**
+   * Durable-derived metrics. Only fields reconstructable from persisted state are
+   * populated (evidence + decision counts, capabilities, revocations, chain
+   * validity, and cross_tenant_leaks = 0 by RLS construction). Live-observability
+   * fields — latency percentiles, canary/injection/model-call counters — are NOT
+   * durable state and read 0 here; they come from the runtime telemetry path, not
+   * persistence. This keeps the durable metrics honest rather than fabricated.
+   */
+  async getMetrics(ctx: RequestContext): Promise<MetricsSnapshot> {
+    const tenant = requireTenant(ctx);
+    const chain = await verifyPersistedChain(this.pool, tenant);
+    const derived = await withTenant(this.pool, tenant, async (c) => {
+      const policyVersion =
+        (await c.query("SELECT policy_version FROM policies ORDER BY policy_version DESC LIMIT 1")).rows[0]?.policy_version ?? "unknown";
+      const evRows = (await c.query("SELECT event_type, decision FROM evidence_envelopes")).rows;
+      let authorizations = 0, permits = 0, denies = 0;
+      for (const r of evRows) {
+        if (r.event_type === "authorization.decided") {
+          authorizations += 1;
+          const m = /permit (\d+)\/(\d+)/.exec(r.decision ?? "");
+          if (m) {
+            permits += Number(m[1]);
+            denies += Number(m[2]) - Number(m[1]);
+          }
+        }
+      }
+      const caps = (await c.query("SELECT count(*)::int AS n FROM capabilities")).rows[0].n as number;
+      const revs = (await c.query("SELECT count(*)::int AS n FROM revocations")).rows[0].n as number;
+      return { policyVersion, evidence_count: evRows.length, authorizations, permits, denies, caps, revs };
+    });
+
+    return {
+      policy_version: derived.policyVersion,
+      evidence_count: derived.evidence_count,
+      evidence_chain_valid: chain.valid,
+      authorizations_total: derived.authorizations,
+      permits_total: derived.permits,
+      denies_total: derived.denies,
+      capabilities_issued: derived.caps,
+      capabilities_revoked: derived.revs,
+      cross_tenant_leaks: 0, // RLS-enforced; durable truth
+      // Live-observability fields are not durable state (see doc comment).
+      authz_p50_ms: 0, authz_p95_ms: 0, authz_p99_ms: 0, revocation_p99_ms: 0,
+      disclosure_reduction_vs_naive: 0, canary_trials: 0, canary_exfiltration_rate: 0,
+      cross_tenant_attempts: 0, human_gate_bypasses: 0, provenance_completeness: 0,
+      false_permit_observed: 0, false_deny_observed: 0, model_calls_allowed: 0,
+      model_calls_denied: 0, injection_blocked: 0, egress_canary_blocked: 0,
+    };
   }
 
   async health(): Promise<StoreHealth> {

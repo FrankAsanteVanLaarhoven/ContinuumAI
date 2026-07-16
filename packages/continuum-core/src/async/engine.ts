@@ -17,7 +17,10 @@ import type {
   ContinuumStore,
   AuthorizeOutcome,
   DiscloseOutcome,
+  DiscloseProof,
   RevocationResult,
+  AuthorizeActionInput,
+  ActionOutcome,
   AuthorizedMemoryMetadata,
   EvidenceVerificationResult,
   StoreHealth,
@@ -41,12 +44,16 @@ export class AsyncContinuumEngine {
     return this.store.transaction(ctx, (tx) => tx.authorizeIntent(input));
   }
 
-  disclose(ctx: RequestContext, input: { tokenId: TokenId; challenge?: string }): Promise<DiscloseOutcome> {
+  disclose(ctx: RequestContext, input: { tokenId: TokenId; challenge?: string; proof?: DiscloseProof }): Promise<DiscloseOutcome> {
     return this.store.transaction(ctx, (tx) => tx.discloseForToken(input));
   }
 
   revokeCapability(ctx: RequestContext, input: { revocationHandle: string }): Promise<RevocationResult> {
     return this.store.transaction(ctx, (tx) => tx.revokeCapability(input));
+  }
+
+  authorizeAction(ctx: RequestContext, input: AuthorizeActionInput): Promise<ActionOutcome> {
+    return this.store.transaction(ctx, (tx) => tx.authorizeAction(input));
   }
 
   listAuthorizedMemory(ctx: RequestContext): Promise<readonly AuthorizedMemoryMetadata[]> {

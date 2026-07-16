@@ -20,7 +20,10 @@ import type {
   ContinuumTransaction,
   AuthorizeOutcome,
   DiscloseOutcome,
+  DiscloseProof,
   RevocationResult,
+  AuthorizeActionInput,
+  ActionOutcome,
   AuthorizedMemoryMetadata,
   EvidenceVerificationResult,
   StoreHealth,
@@ -92,8 +95,10 @@ class InMemoryTransaction implements ContinuumTransaction {
     return { decision: r.decision, disclosure: r.disclosure, capability: r.capability };
   }
 
-  async discloseForToken(input: { tokenId: TokenId; challenge?: string }): Promise<DiscloseOutcome> {
+  async discloseForToken(input: { tokenId: TokenId; challenge?: string; proof?: DiscloseProof }): Promise<DiscloseOutcome> {
     this.guard();
+    // The research adapter self-signs proof-of-possession from the in-process agent
+    // keys; the presenter `proof` (a durable-store concern) is not required here.
     const r = input.challenge !== undefined
       ? this.engine.disclose(input.tokenId, input.challenge)
       : this.engine.disclose(input.tokenId);
@@ -103,6 +108,26 @@ class InMemoryTransaction implements ContinuumTransaction {
   async revokeCapability(input: { revocationHandle: string }): Promise<RevocationResult> {
     this.guard();
     return this.engine.revoke(input.revocationHandle);
+  }
+
+  async authorizeAction(input: AuthorizeActionInput): Promise<ActionOutcome> {
+    this.guard();
+    const intent = this.engine.getIntent(input.intentId);
+    if (!intent) throw new Error(`unknown intent ${input.intentId}`);
+    this.assertTenant(intent.tenant_id, "action");
+    // Research adapter: no durable idempotency ledger — restart-safe idempotency is
+    // a PostgresStore guarantee (gate 6). Here the frozen proposeAction evaluates.
+    const action = this.engine.proposeAction({
+      action_id: input.actionId,
+      intent_id: input.intentId,
+      actor: input.actor,
+      operation: input.operation,
+      action_class: input.actionClass,
+      expected_effect: input.expectedEffect ?? "",
+      reversible: input.reversible ?? true,
+      cost_gbp: input.costGbp ?? 0,
+    });
+    return { action, idempotentReplay: false };
   }
 
   async listAuthorizedMemory(): Promise<readonly AuthorizedMemoryMetadata[]> {

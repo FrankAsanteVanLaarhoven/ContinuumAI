@@ -25,6 +25,7 @@ import type { AuthorizationDecision } from "../policy";
 import type { DisclosurePackage } from "../broker";
 import type { SignedSCT, VerifyResult } from "../capability";
 import type { EvidenceEnvelope, ChainVerification } from "../evidence";
+import type { ActionRecord } from "../action";
 import type { MetricsSnapshot } from "../engine";
 import type {
   RequestContext,
@@ -59,6 +60,36 @@ export interface RevocationResult {
   readonly handle: string;
 }
 
+/**
+ * Point-of-use proof of possession supplied by the presenter (the holder of the
+ * capability's bound key). Required by the durable store to disclose; the digest
+ * of (tokenId, challenge) is recorded so the SAME proof cannot be replayed — a
+ * durable, restart-safe guarantee.
+ */
+export interface DiscloseProof {
+  readonly presenterPrincipalId: PrincipalId;
+  /** Ed25519 signature over popMessage(token, challenge) by the presenter's holder key. */
+  readonly signature: string;
+}
+
+export interface AuthorizeActionInput {
+  /** Stable idempotency key. Re-submitting the same actionId is a no-op (no re-effect). */
+  readonly actionId: string;
+  readonly intentId: IntentId;
+  readonly actor: PrincipalId;
+  readonly operation: string;
+  readonly actionClass: string;
+  readonly expectedEffect?: string;
+  readonly reversible?: boolean;
+  readonly costGbp?: number;
+}
+
+export interface ActionOutcome {
+  readonly action: ActionRecord;
+  /** True when the action already existed and was returned unchanged (idempotent replay). */
+  readonly idempotentReplay: boolean;
+}
+
 export type EvidenceVerificationResult = ChainVerification;
 
 export interface StoreHealth {
@@ -88,10 +119,13 @@ export interface ContinuumTransaction {
   /** Deny-by-default decision + minimum-necessary disclosure + capability issue, atomic. */
   authorizeIntent(input: { intentId: IntentId }): Promise<AuthorizeOutcome>;
 
-  /** Point-of-use disclosure with proof-of-possession + freshness re-check, atomic. */
-  discloseForToken(input: { tokenId: TokenId; challenge?: string }): Promise<DiscloseOutcome>;
+  /** Point-of-use disclosure with proof-of-possession + replay prevention, atomic. */
+  discloseForToken(input: { tokenId: TokenId; challenge?: string; proof?: DiscloseProof }): Promise<DiscloseOutcome>;
 
   revokeCapability(input: { revocationHandle: string }): Promise<RevocationResult>;
+
+  /** Deny-by-default consequence gate; idempotent on actionId (durable stores enforce it across restart). */
+  authorizeAction(input: AuthorizeActionInput): Promise<ActionOutcome>;
 
   listAuthorizedMemory(): Promise<readonly AuthorizedMemoryMetadata[]>;
   verifyEvidenceChain(): Promise<EvidenceVerificationResult>;

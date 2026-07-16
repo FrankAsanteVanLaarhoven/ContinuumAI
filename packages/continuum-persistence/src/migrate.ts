@@ -12,7 +12,7 @@ import type { DbConfig } from "./pg";
 
 const { Client } = pg;
 const here = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS = ["0001_init.sql"];
+const MIGRATIONS = ["0001_init.sql", "0002_runtime.sql"];
 
 export async function migrate(cfg: DbConfig): Promise<void> {
   const client = new Client({
