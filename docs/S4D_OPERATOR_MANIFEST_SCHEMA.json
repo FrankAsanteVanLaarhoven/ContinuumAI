@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://continuum.local/schemas/s4d-operator-manifest.json",
+  "title": "S4D-0 operator provider-registration manifest",
+  "description": "Structure and static constraints for the S4D provider-registration manifest. The PRIVATE instance (operator.s4d.local.json) is gitignored and holds confidential facts; only a redacted public status record is committed. This schema pins required fields and fail-closed constraints; it neither authorizes provider contact nor enables qualification.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["manifest_version", "provider", "oidc", "privacy", "credential_custody", "synthetic_identities", "budgets", "evidence", "rollback", "gates"],
+  "properties": {
+    "manifest_version": { "const": "s4d0-v1" },
+    "provider": {
+      "type": "object",
+      "required": ["selection_status", "provider_name", "environment", "registration_id", "tenant_or_directory_id", "region"],
+      "properties": {
+        "selection_status": { "type": "string", "enum": ["UNPINNED", "PINNED"] },
+        "environment": { "const": "isolated_test" }
+      }
+    },
+    "oidc": {
+      "type": "object",
+      "required": ["issuer", "authorization_endpoint", "token_endpoint", "jwks_uri", "client_id", "client_authentication_method", "audiences", "redirect_uri", "post_logout_redirect_uri", "scopes", "allowed_signing_algorithms", "pkce_method", "response_type", "response_mode"],
+      "properties": {
+        "audiences": { "type": "array", "items": { "type": "string" } },
+        "scopes": {
+          "type": "array",
+          "description": "Minimal scopes only. Refresh / offline-access scope is forbidden.",
+          "items": { "type": "string", "not": { "const": "offline_access" } }
+        },
+        "allowed_signing_algorithms": {
+          "type": "array",
+          "description": "Asymmetric algorithms only; the alg 'none' is forbidden.",
+          "items": { "type": "string", "enum": ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512", "PS256", "PS384", "PS512"] }
+        },
+        "pkce_method": { "const": "S256" },
+        "response_type": { "const": "code" },
+        "response_mode": { "type": "string", "enum": ["query", "form_post"] }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "required": ["terms_reviewed_at", "processing_region", "authentication_log_retention", "administrative_log_retention", "training_use_policy", "subprocessor_review_status", "deletion_procedure_reference"]
+    },
+    "credential_custody": {
+      "type": "object",
+      "description": "The manifest identifies WHERE the secret is held (secret_reference); it never stores the secret. secret_present_in_manifest MUST be false — the private manifest is not an alternative plaintext secret store.",
+      "required": ["credential_type", "secret_reference", "secret_present_in_manifest", "storage_class", "access_owners", "rotation_policy", "emergency_revocation_procedure"],
+      "properties": {
+        "access_owners": { "type": "array" },
+        "secret_present_in_manifest": { "const": false }
+      }
+    },
+    "synthetic_identities": {
+      "type": "array",
+      "description": "Inventory only; accounts are NOT_CREATED at registration time.",
+      "items": {
+        "type": "object",
+        "required": ["synthetic_id", "provider_state", "continuum_mapping_status", "membership_status", "expected_authentication_result", "expected_tenant_resolution_result", "creation_status"],
+        "properties": {
+          "synthetic_id": { "type": "string", "pattern": "^SYN-[0-9]{2}$" },
+          "creation_status": { "const": "NOT_CREATED" }
+        }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "required": ["maximum_successful_logins", "maximum_negative_cases", "maximum_token_exchanges", "maximum_metadata_jwks_requests", "maximum_infrastructure_retries", "maximum_failed_attempts", "maximum_cost", "maximum_wall_clock_minutes", "maximum_evidence_bytes", "real_users"],
+      "properties": {
+        "real_users": { "const": 0 },
+        "maximum_successful_logins": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "maximum_negative_cases": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "maximum_token_exchanges": { "type": "integer", "minimum": 1, "maximum": 40 },
+        "maximum_metadata_jwks_requests": { "type": "integer", "minimum": 1, "maximum": 30 },
+        "maximum_infrastructure_retries": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "maximum_failed_attempts": { "type": "integer", "minimum": 1, "maximum": 25 },
+        "maximum_wall_clock_minutes": { "type": "integer", "minimum": 1, "maximum": 240 }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["location_reference", "access_policy", "retention_period", "redaction_validation_complete"],
+      "properties": { "redaction_validation_complete": { "type": "boolean" } }
+    },
+    "rollback": {
+      "type": "object",
+      "required": ["owner", "credential_revocation_ready", "callback_removal_ready", "synthetic_user_disablement_ready", "session_revocation_ready", "procedure_reference"]
+    },
+    "gates": {
+      "type": "object",
+      "required": ["configuration_valid", "privacy_review_complete", "credentials_available", "redirect_registered", "synthetic_identities_ready", "budget_pinned", "evidence_controls_verified", "reviewer_signoff", "qualification_enabled"],
+      "additionalProperties": { "type": "boolean" }
+    }
+  }
+}
