@@ -21,6 +21,7 @@ import {
   computeDisclosure,
   issueSCT,
   EvidenceLedger,
+  intentInputSchema,
   type ContinuumStore,
   type ContinuumTransaction,
   type RequestContext,
@@ -234,11 +235,48 @@ class PgTransaction implements ContinuumTransaction {
     private readonly authority: WriteAuthority | null,
   ) {}
 
-  async submitIntent(_input: SubmitIntentInput): Promise<string> {
-    // Intent intake over Postgres is HELD: it needs the schema-level input
-    // validation persistence and GAP-3 (submission idempotency). authorizeIntent
-    // — the decision write path — is live below.
-    return pendingReview("submitIntent");
+  /**
+   * Intent intake over Postgres: validate with the frozen schema, persist the
+   * intent (RLS WITH CHECK binds it to the context tenant), and append the
+   * "intent.submitted" evidence continuing the persisted chain (GAP-4).
+   */
+  async submitIntent(input: SubmitIntentInput): Promise<string> {
+    const tenant = requireTenant(this.ctx);
+    const auth = this.requireAuthority("submitIntent");
+    await this.assertPlatformKeyCustody(auth);
+
+    const parsed = intentInputSchema.parse(input);
+    const intent: Intent = {
+      ...parsed,
+      intent_id: parsed.intent_id ?? `int_${randomUUID()}`,
+      cip: "CIP-002",
+    };
+    if (intent.tenant_id !== tenant) {
+      throw new Error("intent tenant does not match request context (fail-closed)");
+    }
+
+    await this.client.query(
+      `INSERT INTO intents (tenant_id, intent_id, owner_id, actor_id, purpose, requested_operations, prohibited_operations, constraints, required_evidence, human_gate, actor_geo, model_id, agent_build, risk_score)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [
+        intent.tenant_id, intent.intent_id, intent.owner_id, intent.actor_id, intent.purpose,
+        j(intent.requested_operations), j(intent.prohibited_operations), j(intent.constraints),
+        j(intent.required_evidence), j(intent.human_gate), intent.actor_geo, intent.model_id,
+        intent.agent_build, intent.risk_score,
+      ],
+    );
+
+    const ledger = await this.resumeLedger(auth);
+    const env = ledger.append({
+      tenant_id: intent.tenant_id,
+      owner_id: intent.owner_id,
+      principal: intent.actor_id,
+      event_type: "intent.submitted",
+      intent_id: intent.intent_id,
+      nowMs: this.ctx.issuedAt.getTime(),
+    });
+    await this.insertEvidence(env);
+    return intent.intent_id;
   }
 
   async getIntent(intentId: string): Promise<Intent | null> {
@@ -274,6 +312,23 @@ class PgTransaction implements ContinuumTransaction {
   private async loadEvidenceInTxn(): Promise<EvidenceEnvelope[]> {
     const res = await this.client.query("SELECT * FROM evidence_envelopes ORDER BY seq ASC");
     return res.rows.map(rowToEnvelope);
+  }
+
+  /** Resume an EvidenceLedger from the persisted chain (GAP-4). Fail-closed. */
+  private async resumeLedger(auth: WriteAuthority): Promise<EvidenceLedger> {
+    const prior = await this.loadEvidenceInTxn();
+    const ledger = new EvidenceLedger(
+      auth.platformKeys.privateKeyPem,
+      auth.platformKeys.publicKeyPem,
+      auth.config.policy_version,
+    );
+    const resumed = ledger.resume(prior);
+    if (!resumed.valid) {
+      throw new Error(
+        `persisted evidence chain failed verification (${resumed.detail}) — refusing to extend (fail-closed)`,
+      );
+    }
+    return ledger;
   }
 
   private async insertCapability(cap: SignedSCT): Promise<void> {
@@ -380,18 +435,7 @@ class PgTransaction implements ContinuumTransaction {
     }
 
     // --- evidence continuation (GAP-4): resume persisted chain, append, persist ---
-    const prior = await this.loadEvidenceInTxn();
-    const ledger = new EvidenceLedger(
-      auth.platformKeys.privateKeyPem,
-      auth.platformKeys.publicKeyPem,
-      auth.config.policy_version,
-    );
-    const resumed = ledger.resume(prior);
-    if (!resumed.valid) {
-      throw new Error(
-        `persisted evidence chain failed verification (${resumed.detail}) — refusing to extend (fail-closed)`,
-      );
-    }
+    const ledger = await this.resumeLedger(auth);
 
     const decisionEnvelope = ledger.append({
       tenant_id: intent.tenant_id,

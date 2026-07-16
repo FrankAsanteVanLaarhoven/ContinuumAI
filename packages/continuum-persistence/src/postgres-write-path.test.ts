@@ -219,4 +219,38 @@ describe("PostgresStore · authorizeIntent write path over real RLS", () => {
       await noAuth.close();
     }
   });
+
+  it("submitIntent persists a new intent and authorizes it end-to-end over Postgres", async () => {
+    const raw = {
+      owner_id: OWNER,
+      actor_id: AGENT,
+      tenant_id: "t_acme",
+      purpose: "supplier_quote_comparison",
+      requested_operations: ["read:supplier_quotes", "read:approved_budget_band", "write:recommendation_draft"],
+      prohibited_operations: ["place_order", "modify_budget", "send_external_email"],
+      constraints: {
+        maximum_data_classification: "confidential",
+        geographic_boundary: ["GB"],
+        valid_until: "2027-01-01T00:00:00.000Z",
+        maximum_cost_gbp: 5,
+      },
+      required_evidence: ["agent_attestation", "approved_model_policy", "current_user_consent"],
+      human_gate: { required_for: ["external_commitment", "financial_execution"] },
+      actor_geo: "GB",
+      model_id: "gw-approved-llm-2026-06",
+      agent_build: engine.getPrincipal(AGENT)?.build_hash ?? null,
+      risk_score: 0.12,
+    };
+    const newId = await store.transaction(ctx("t_acme"), (tx) => tx.submitIntent(raw));
+    expect(newId).toMatch(/^int_/);
+
+    // Read-back through RLS, then authorize the freshly-submitted intent.
+    expect((await store.getIntent(ctx("t_acme"), newId))?.intent_id).toBe(newId);
+    const out = await store.transaction(ctx("t_acme"), (tx) => tx.authorizeIntent({ intentId: newId }));
+    expect(out.decision.permitted_ids).toHaveLength(2);
+    expect(out.capability).not.toBeNull();
+
+    const v = await store.verifyEvidenceChain(ctx("t_acme"));
+    expect(v.valid).toBe(true);
+  });
 });
