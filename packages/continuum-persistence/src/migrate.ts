@@ -19,6 +19,7 @@ const MIGRATIONS = [
   "0004_public_trusted_context.sql",
   "0005_session_identity.sql",
   "0006_replay_ledger.sql",
+  "0007_authorization_transactions.sql",
 ];
 
 /**

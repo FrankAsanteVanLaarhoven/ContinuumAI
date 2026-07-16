@@ -21,3 +21,10 @@ export * from "./http-jwks-source";
 export * from "./cached-key-provider";
 export * from "./jwt-verifier";
 export * from "./jwt-config";
+// S4B — browser-independent authorization-code protocol state machine.
+export * from "./authz-types";
+export * from "./authz-secrets";
+export * from "./authz-config";
+export * from "./fixture-exchanger";
+export * from "./authz-flow";
+export * from "./authz-memory";

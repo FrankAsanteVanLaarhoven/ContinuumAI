@@ -269,3 +269,67 @@ redirect/callback, authorization-code exchange, PKCE, cookies, CSRF, refresh tok
 user-facing login, workload identity, break-glass, or HTTP SIF-Bench v0.2. No
 production-readiness claim, and no resistance to database-superuser or privileged
 session-role compromise.
+
+## Phase 3 S4B — browser-independent authorization-code protocol state machine
+
+S4B is a persisted, single-use authorization-code **transaction boundary** binding
+state/nonce/PKCE/issuer/redirect BEFORE any browser or provider integration. It ships
+a deterministic flow, a **fixture** code exchanger (never a real provider) and a
+**test-protected** PKCE secret store; production configuration is refused. A completed
+login normalizes through S4A + S3 and carries no tenant authority (S2B remains the
+sole tenant transition).
+
+| Threat / misuse | Control (S4B) | Verified by |
+|-----------------|---------------|-------------|
+| Caller injects redirect/client/issuer | client id + redirect + endpoint come from the trusted registry; caller supplies only the issuer to authenticate against | `authz-flow.test.ts` begin, `s4b-authz.test.ts` binding |
+| State guessing / forgery | 256-bit CSPRNG state, keyed-digest storage, one-time consumable, expiry-enforced | `authz-secrets.test.ts`, `authz-flow.test.ts` |
+| Code / state replay | atomic guarded UPDATE consume (no read-then-update); consumed-before-exchange; a fresh login needs a new transaction | `s4b-authz.test.ts` concurrency + restart |
+| Concurrent callback double-spend | exactly one of eight concurrent callbacks consumes; the rest are `already_consumed` | `s4b-authz.test.ts` "eight concurrent" |
+| PKCE downgrade / injection | S256 only (plain refused); challenge generated internally; caller cannot supply verifier/challenge; verifier bound to the transaction | `authz-config.test.ts`, `authz-flow.test.ts` |
+| Nonce not validated | nonce digested from the S4A-verified token and compared to the transaction; state success is never a nonce substitute | `authz-flow.test.ts`, `s4b-authz.test.ts` |
+| Token substitution from another issuer | S4A verifies against the registered issuer AND the token issuer must equal the transaction issuer | `s4b-authz.test.ts` "another issuer" |
+| Forged / unverifiable id token | S4A signature/claims verification before mapping; failure denies | `authz-flow.test.ts`, `s4b-authz.test.ts` |
+| Session before verification | session minted ONLY after consume + exchange + S4A verify + nonce + mapping succeed | `authz-flow.test.ts` (create-count), `s4b-authz.test.ts` |
+| Session fixation | always mints a NEW session; no caller pre-auth credential is upgraded | `authz-flow.test.ts`, flow contract |
+| Secrets at rest / in evidence | state/nonce as keyed digests; PKCE verifier encrypted-at-rest; no raw state/nonce/code/token/credential in the row or events | `s4b-authz.test.ts` "secret hygiene" |
+| Transaction tampering / deletion | session role has INSERT + EXECUTE only; no direct UPDATE/DELETE; bindings immutable; rows never DELETEd (audit preserved) | `s4b-authz.test.ts` "no direct mutation" |
+| Login grants a tenant | flow role has no tenant_memberships / public.* / current_tenant path | `s4b-authz.test.ts` "no tenant path" |
+| Silent test fallback | fail-closed config: prod refuses deterministic flow / fixture exchanger / test-protected PKCE / memory store / plain PKCE / unbounded TTL | `authz-config.test.ts` |
+
+**Fail-closed matrix (S4B).** Deny when: callback structure invalid; state
+missing/malformed/unknown/replayed; transaction expired/already-consumed; PKCE
+recovery or challenge mismatch; code exchange denied/unavailable; id token
+missing/unverifiable; issuer mismatch; nonce missing/mismatch; principal mapping
+denied or inactive; session creation or evidence write fails; any internal
+uncertainty. The transaction store never falls back to memory.
+
+**Replay-prevention boundary (state precisely).** S4B provides **restart-safe,
+single-database authorization-transaction replay prevention using atomic one-time
+consumption** — within one database a transaction is consumable at most once, and
+that survives process restart. Do **not** claim "authorization codes can never be
+replayed." NOT established: cross-region/cross-deployment state-digest uniqueness;
+multi-database / multi-writer consistency; resistance to a privileged database role
+tampering with the row; provider-side code single-use (the exchanger is a fixture);
+browser-channel replay defense; the case where an attacker already holds the raw
+state, code, and PKCE verifier before the legitimate callback completes.
+
+**PKCE verifier custody (non-production).** The verifier is stored encrypted-at-rest
+with AES-256-GCM (`base64(iv‖tag‖ct)`) under a versioned key
+(`pkce_verifier_key_version`); GCM authenticates decryption, and any tamper / wrong
+or absent key version yields `null` → `internal_protocol_error` deny (no session).
+Rotation selects by the stored version. This is the TEST-protected in-process store;
+production refuses it and requires a separately-reviewed KMS/HSM-backed (or
+equivalently protected) secret-custody mechanism — the test key is never valid in
+production.
+
+**Claim boundaries (S4B — do not overstate).** The exchanger is a fixture, not a real
+token endpoint; the PKCE secret store is in-process test-protected, not KMS/HSM;
+consumption is single-database (not cross-region/cross-deployment consistent); there
+are no browser routes, cookies, CSRF, or refresh tokens. S4B is a protocol
+state-machine boundary, not secure browser login and not production-ready.
+
+**Non-goals (S4B).** No real provider/token endpoint, provider SDK, browser routes,
+cookies, CSRF middleware, refresh tokens, user-facing login, KMS/HSM PKCE storage,
+workload identity, break-glass, deployment, or HTTP SIF-Bench v0.2. No
+production-readiness claim; no resistance to database-superuser or privileged
+session-role compromise.

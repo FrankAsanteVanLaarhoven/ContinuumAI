@@ -5,3 +5,4 @@ export * from "./provisioning";
 export * from "./postgres-store";
 export * from "./session-store";
 export * from "./replay-store";
+export * from "./authz-store";
