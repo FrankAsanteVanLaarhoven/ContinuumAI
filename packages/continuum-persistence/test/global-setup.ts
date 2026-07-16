@@ -10,8 +10,9 @@ import { join } from "node:path";
 import EmbeddedPostgres from "embedded-postgres";
 import { runVerticalSlice } from "@continuum/core";
 import { migrate } from "../src/migrate";
-import { appPool, type DbConfig } from "../src/pg";
+import { appPool, adminPool, type DbConfig } from "../src/pg";
 import { persistExport } from "../src/repository";
+import { provisionForExport } from "./identity";
 
 const DATA_DIR = join(tmpdir(), "continuum-pgtest-data");
 const PORT = 55444;
@@ -38,11 +39,17 @@ export async function setup(): Promise<void> {
   await migrate(cfg);
 
   const slice = runVerticalSlice(SLICE_TIME);
+  const exp = slice.engine.exportState();
+  const admin = adminPool(cfg);
   const pool = appPool(cfg);
   try {
-    await persistExport(pool, slice.engine.exportState());
+    // Provision the trusted service identities (admin path) THEN seed under
+    // trusted context so the S2B RLS (continuum.current_tenant()) admits the writes.
+    const resolveRef = await provisionForExport(admin, exp);
+    await persistExport(pool, exp, resolveRef);
   } finally {
     await pool.end();
+    await admin.end();
   }
 }
 

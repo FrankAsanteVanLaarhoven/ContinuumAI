@@ -12,9 +12,18 @@ import type { DbConfig } from "./pg";
 
 const { Client } = pg;
 const here = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS = ["0001_init.sql", "0002_runtime.sql", "0003_identity.sql"];
+const MIGRATIONS = ["0001_init.sql", "0002_runtime.sql", "0003_identity.sql", "0004_public_trusted_context.sql"];
 
-export async function migrate(cfg: DbConfig): Promise<void> {
+/**
+ * Apply the migrations in order. `through` pins the schema to a specific version
+ * (inclusive) — used by frozen research harnesses to hold the exact schema they
+ * were measured against (e.g. the concurrency baseline pins to the pre-S2B RLS).
+ * Default: apply everything.
+ */
+export async function migrate(cfg: DbConfig, through?: string): Promise<void> {
+  const idx = through ? MIGRATIONS.indexOf(through) : MIGRATIONS.length - 1;
+  if (through && idx < 0) throw new Error(`unknown migration '${through}'`);
+  const selected = MIGRATIONS.slice(0, idx + 1);
   const client = new Client({
     host: cfg.host,
     port: cfg.port,
@@ -24,7 +33,7 @@ export async function migrate(cfg: DbConfig): Promise<void> {
   });
   await client.connect();
   try {
-    for (const file of MIGRATIONS) {
+    for (const file of selected) {
       const sql = readFileSync(join(here, "..", "migrations", file), "utf8");
       try {
         await client.query("BEGIN");

@@ -10,13 +10,14 @@
  * write/decision path is HELD (documented, not a silent stub).
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { AsyncContinuumEngine, researchContext, type RequestContext } from "@continuum/core";
-import { appPool, dbConfigFromEnv, withTenant } from "./pg";
+import { AsyncContinuumEngine, type RequestContext } from "@continuum/core";
+import { appPool, dbConfigFromEnv } from "./pg";
+import { serviceContext, withServiceCtx } from "../test/identity";
 import { PostgresStore } from "./postgres-store";
 
 const NOW = Date.parse("2026-07-15T00:00:00.000Z");
 function ctx(tenantId: string, principalId = "spiffe://acme.ai/agents/procurement-agent"): RequestContext {
-  return researchContext({ tenantId, principalId, nowMs: NOW, source: "service_api" });
+  return serviceContext(tenantId, { nowMs: NOW, source: "service_api", subject: principalId });
 }
 
 let store: PostgresStore;
@@ -43,7 +44,7 @@ describe("PostgresStore · read/verify/revoke/durability over real RLS", () => {
 
   it("a foreign-tenant intent read returns null (RLS invisibility)", async () => {
     // Any intent id, read from the wrong tenant, is invisible.
-    const acmeIntent = await withTenant(appPool(dbConfigFromEnv()), "t_acme", async (c) =>
+    const acmeIntent = await withServiceCtx(appPool(dbConfigFromEnv()), "t_acme", async (c) =>
       (await c.query("SELECT intent_id FROM intents LIMIT 1")).rows[0]?.intent_id as string | undefined,
     );
     expect(acmeIntent).toBeTruthy();
@@ -70,7 +71,7 @@ describe("PostgresStore · read/verify/revoke/durability over real RLS", () => {
   });
 
   it("revocation persists (append-only) and is visible on a fresh pool", async () => {
-    const handle = await withTenant(appPool(dbConfigFromEnv()), "t_acme", async (c) =>
+    const handle = await withServiceCtx(appPool(dbConfigFromEnv()), "t_acme", async (c) =>
       (await c.query("SELECT revocation_handle FROM capabilities LIMIT 1")).rows[0]?.revocation_handle as string | undefined,
     );
     expect(handle).toBeTruthy();
@@ -80,7 +81,7 @@ describe("PostgresStore · read/verify/revoke/durability over real RLS", () => {
 
     const restarted = new PostgresStore(dbConfigFromEnv());
     try {
-      const rows = await withTenant(appPool(dbConfigFromEnv()), "t_acme", async (c) =>
+      const rows = await withServiceCtx(appPool(dbConfigFromEnv()), "t_acme", async (c) =>
         (await c.query("SELECT revocation_handle FROM revocations WHERE revocation_handle = $1", [handle])).rows,
       );
       expect(rows.length).toBe(1);

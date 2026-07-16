@@ -10,19 +10,19 @@ import {
   AsyncContinuumEngine,
   InMemoryAsyncStore,
   runVerticalSlice,
-  researchContext,
   type RequestContext,
 } from "@continuum/core";
 import { dbConfigFromEnv } from "./pg";
+import { serviceContext } from "../test/identity";
 import { PostgresStore } from "./postgres-store";
 
 // The global-setup persisted runVerticalSlice(SLICE_TIME); the in-memory adapter
 // must be seeded from the same instant so the two stores hold identical state.
+// serviceContext carries the provisioned trusted identity for the Postgres path;
+// the in-memory adapter simply reads the tenant it names.
 const SLICE_TIME = Date.parse("2026-07-14T12:00:00.000Z");
-const acme = (): RequestContext =>
-  researchContext({ tenantId: "t_acme", principalId: "spiffe://acme.ai/agents/procurement-agent", nowMs: SLICE_TIME, source: "service_api" });
-const globex = (): RequestContext =>
-  researchContext({ tenantId: "t_globex", principalId: "spiffe://globex.health/agents/billing-agent", nowMs: SLICE_TIME, source: "service_api" });
+const acme = (): RequestContext => serviceContext("t_acme", { nowMs: SLICE_TIME, source: "service_api" });
+const globex = (): RequestContext => serviceContext("t_globex", { nowMs: SLICE_TIME, source: "service_api" });
 
 /** Assertions every conformant ContinuumStore adapter must satisfy. */
 async function assertContract(engine: AsyncContinuumEngine): Promise<void> {

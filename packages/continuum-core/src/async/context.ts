@@ -56,6 +56,8 @@ export type TenantDerivation =
   | "trusted_delegation"
   | "research_fixture";
 
+export type MembershipId = string;
+
 export interface DerivedTenantContext {
   readonly tenantId: TenantId;
   readonly mappingVersion: string;
@@ -63,6 +65,13 @@ export interface DerivedTenantContext {
   readonly derivedFrom: TenantDerivation;
   /** DB transaction-context identifier. Generated internally; never caller-selectable. */
   readonly databaseContextId: string;
+  /**
+   * The active membership the tenant was DERIVED from (S2B). For the durable store
+   * this is the continuum.tenant_memberships id that the trusted DB function
+   * resolved; the transaction re-establishes context from it so a caller cannot
+   * substitute a tenant. Absent on the in-memory research adapter.
+   */
+  readonly membershipId?: MembershipId | null;
 }
 
 export interface PolicySnapshotReference {
@@ -100,6 +109,13 @@ export interface ExecutionContextInput {
   readonly requestId: RequestId;
   readonly traceId: TraceId;
   readonly source: RequestSource;
+  /**
+   * Optional membership selector (S2B). A hint that selects among the subject's
+   * OWN active memberships when the principal belongs to more than one tenant; it
+   * never grants a membership and never names an authoritative tenant. The tenant
+   * is always DERIVED by the trusted boundary from the resolved membership.
+   */
+  readonly requestedMembershipId?: MembershipId;
 }
 
 /** Marker returned by `resolveStoreMode` diagnostics when running in memory mode. */

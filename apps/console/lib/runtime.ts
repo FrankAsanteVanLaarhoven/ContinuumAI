@@ -25,24 +25,46 @@ import {
 import { PostgresStore, dbConfigFromEnv, type DbConfig } from "@continuum/persistence";
 import type { RuntimeState } from "./runtime-dto";
 
-/** Operator identity for the console's read view. In a real deployment this is
- *  derived from the authenticated session; here it is a fixed operator subject. */
-const CONSOLE_SUBJECT =
-  process.env.CONTINUUM_CONSOLE_SUBJECT ?? "spiffe://acme.ai/agents/procurement-agent";
-const CONSOLE_TENANT = process.env.CONTINUUM_CONSOLE_TENANT ?? "t_acme";
+/** A subject's provisioned trusted identity — NO tenant; the DB derives it (S2B). */
+export interface TrustedSubjectIdentity {
+  readonly principalId: string;
+  readonly sessionId: string;
+  readonly membershipId?: string;
+}
+
+const CONSOLE_SUBJECT_DEFAULT = "spiffe://acme.ai/agents/procurement-agent";
+
+/**
+ * The console operator's provisioned identity, from the deployment environment.
+ * The tenant is NEVER configured here — it is DERIVED by the trusted database
+ * function from this identity's active membership (S2B). Absent identity ⇒ an
+ * empty trusted map ⇒ resolveExecutionContext fails closed (no forged operator).
+ * Provisioning the operator identity (principal/session/membership) is an admin
+ * bootstrap step; authenticated session issuance is a later, separate milestone.
+ */
+function consoleTrustedSubjects(env: NodeJS.ProcessEnv): Record<string, TrustedSubjectIdentity> {
+  const subject = env.CONTINUUM_CONSOLE_SUBJECT ?? CONSOLE_SUBJECT_DEFAULT;
+  const principalId = env.CONTINUUM_CONSOLE_PRINCIPAL_ID;
+  const sessionId = env.CONTINUUM_CONSOLE_SESSION_ID;
+  const membershipId = env.CONTINUUM_CONSOLE_MEMBERSHIP_ID;
+  if (!principalId || !sessionId) return {}; // fail-closed: no provisioned operator
+  return { [subject]: { principalId, sessionId, membershipId } };
+}
 
 export interface Runtime {
   readonly engine: AsyncContinuumEngine;
   readonly store: ContinuumStore;
   readonly mode: StoreMode;
+  /** The console operator subject this runtime resolves context for. */
+  readonly subject: string;
 }
 
 export interface RuntimeOptions {
   env?: NodeJS.ProcessEnv;
   /** Postgres connection (defaults to CONTINUUM_DB). */
   dbConfig?: DbConfig;
-  /** Trusted subject → {principalId, tenantId} map for the Postgres boundary. */
-  trustedSubjects?: Record<string, { principalId: string; tenantId: string }>;
+  /** Trusted subject → provisioned identity map for the Postgres boundary (NO tenant). */
+  trustedSubjects?: Record<string, TrustedSubjectIdentity>;
 }
 
 /**
@@ -52,13 +74,11 @@ export interface RuntimeOptions {
 export function createRuntime(opts: RuntimeOptions = {}): Runtime {
   const env = opts.env ?? process.env;
   const mode = resolveStoreMode(env);
+  const subject = env.CONTINUUM_CONSOLE_SUBJECT ?? CONSOLE_SUBJECT_DEFAULT;
 
   let store: ContinuumStore;
   if (mode === "postgres") {
-    const trustedSubjects =
-      opts.trustedSubjects ?? {
-        [CONSOLE_SUBJECT]: { principalId: CONSOLE_SUBJECT, tenantId: CONSOLE_TENANT },
-      };
+    const trustedSubjects = opts.trustedSubjects ?? consoleTrustedSubjects(env);
     store = new PostgresStore(opts.dbConfig ?? dbConfigFromEnv(), { trustedSubjects });
   } else {
     store = new InMemoryAsyncStore();
@@ -66,11 +86,15 @@ export function createRuntime(opts: RuntimeOptions = {}): Runtime {
 
   // Defense in depth: refuse memory mode in production even if reached.
   assertProductionStore(env, mode);
-  return { engine: new AsyncContinuumEngine(store), store, mode };
+  return { engine: new AsyncContinuumEngine(store), store, mode, subject };
 }
 
-/** Resolve the console operator's RequestContext through the trusted boundary. */
-export function resolveConsoleContext(rt: Runtime, subject = CONSOLE_SUBJECT): Promise<RequestContext> {
+/**
+ * Resolve the console operator's RequestContext through the trusted boundary. The
+ * tenant is DERIVED by the database from the operator's provisioned identity; the
+ * console never selects it. Fails closed if the operator identity is not provisioned.
+ */
+export function resolveConsoleContext(rt: Runtime, subject = rt.subject): Promise<RequestContext> {
   const stamp = Date.now();
   return rt.store.resolveExecutionContext({
     authenticatedSubject: subject,

@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import EmbeddedPostgres from "embedded-postgres";
 import { runVerticalSlice } from "@continuum/core";
-import { migrate, appPool, persistExport, type DbConfig } from "@continuum/persistence";
+import { migrate, appPool, adminPool, persistExport, provisionForExport, type DbConfig } from "@continuum/persistence";
 
 const DATA_DIR = join(tmpdir(), "continuum-conctest-data");
 const PORT = 55446;
@@ -33,14 +33,24 @@ export async function setup(): Promise<void> {
   const cfg: DbConfig = { host: "127.0.0.1", port: PORT, database: "continuum" };
   process.env.CONTINUUM_DB = JSON.stringify(cfg);
 
-  await migrate(cfg);
+  // Pin the schema to the PRE-S2B RLS (through 0003): this suite is the FROZEN
+  // concurrency before-picture that reproduces GAP-5 (the app-cooperative
+  // app.current_tenant re-key in C3-06). S2B's 0004 trusted-context rewire must
+  // NOT change what this baseline measures, so 0004 is deliberately not applied
+  // here. Seeding still goes through a trusted (provisioned) context, which sets
+  // app.current_tenant and is therefore admitted by the pre-0004 policy.
+  await migrate(cfg, "0003_identity.sql");
 
   const slice = runVerticalSlice(SLICE_TIME);
+  const exp = slice.engine.exportState();
+  const admin = adminPool(cfg);
   const pool = appPool(cfg);
   try {
-    await persistExport(pool, slice.engine.exportState());
+    const resolveRef = await provisionForExport(admin, exp);
+    await persistExport(pool, exp, resolveRef);
   } finally {
     await pool.end();
+    await admin.end();
   }
 }
 

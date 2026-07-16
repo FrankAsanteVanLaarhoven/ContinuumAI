@@ -57,13 +57,32 @@ import {
   type VerifyResult,
 } from "@continuum/core";
 import { randomUUID } from "node:crypto";
-import { appPool, withTenant, withoutTenant, type DbConfig } from "./pg";
+import { appPool, withTrustedContext, withoutTenant, type DbConfig, type TrustedContextRef } from "./pg";
 import { loadEvidence, verifyPersistedChain } from "./repository";
 
 function requireTenant(ctx: RequestContext): string {
   const t = ctx.tenant?.tenantId;
   if (!t) throw new Error("missing tenant context: request denied (fail-closed)");
   return t;
+}
+
+/**
+ * Build the trusted-context reference from a RequestContext. The tenant is NOT
+ * carried into the reference — it is DERIVED by the database from the principal,
+ * session and membership. A fresh request id correlates the establishment.
+ */
+function refFromCtx(ctx: RequestContext): TrustedContextRef {
+  const principalId = ctx.principal?.principalId;
+  const sessionId = ctx.sessionId;
+  if (!principalId || !sessionId) {
+    throw new Error("missing trusted identity (principal/session) in request context (fail-closed)");
+  }
+  return {
+    principalId,
+    sessionId,
+    requestId: randomUUID(),
+    membershipId: ctx.tenant?.membershipId ?? null,
+  };
 }
 
 function pendingReview(op: string): never {
@@ -667,13 +686,27 @@ class PgTransaction implements ContinuumTransaction {
   }
 
   async verifyEvidenceChain(): Promise<EvidenceVerificationResult> {
-    return verifyPersistedChain(this.pool, requireTenant(this.ctx));
+    return verifyPersistedChain(this.pool, refFromCtx(this.ctx));
   }
 }
 
+/** A subject's provisioned trusted identity (principal + session, no tenant — the DB derives it). */
+export interface TrustedSubjectIdentity {
+  readonly principalId: string;
+  readonly sessionId: string;
+  /** Optional membership selector when the principal belongs to more than one tenant. */
+  readonly membershipId?: string;
+}
+
 export interface PostgresStoreOptions {
-  /** Trusted subject → {principalId, tenantId} map (stand-in for the reviewed §3 DB function). */
-  trustedSubjects?: Record<string, { principalId: string; tenantId: string }>;
+  /**
+   * Trusted subject → provisioned identity map. Maps an authenticated subject to
+   * the continuum.principals/authenticated_sessions records provisioned for it.
+   * NOTE: it carries NO tenant — the tenant is DERIVED by the trusted database
+   * function from the identity's active membership (S2B). The authenticated
+   * issuance of these sessions (OIDC/rotation) is a later, separately-reviewed step.
+   */
+  trustedSubjects?: Record<string, TrustedSubjectIdentity>;
   /** Deployment authority for the write/decision path. Absent ⇒ authorizeIntent
    *  stays HELD (pending review). See {@link WriteAuthority}. */
   writeAuthority?: WriteAuthority;
@@ -682,7 +715,7 @@ export interface PostgresStoreOptions {
 export class PostgresStore implements ContinuumStore {
   readonly mode = "postgres" as const;
   private readonly pool: Pool;
-  private readonly trusted: Record<string, { principalId: string; tenantId: string }>;
+  private readonly trusted: Record<string, TrustedSubjectIdentity>;
   private readonly authority: WriteAuthority | null;
 
   constructor(cfg: DbConfig, opts?: PostgresStoreOptions) {
@@ -691,9 +724,24 @@ export class PostgresStore implements ContinuumStore {
     this.authority = opts?.writeAuthority ?? null;
   }
 
+  /**
+   * Trusted resolver. Maps an authenticated subject to its provisioned identity
+   * and DERIVES the tenant by establishing trusted context in the database — the
+   * caller never supplies a tenant. If the identity cannot establish context
+   * (unknown/suspended principal, expired/foreign session, revoked/ambiguous
+   * membership) this throws, fail-closed.
+   */
   async resolveExecutionContext(input: ExecutionContextInput): Promise<RequestContext> {
     const mapped = this.trusted[input.authenticatedSubject];
-    if (!mapped) throw new Error(`no trusted tenant mapping for subject ${input.authenticatedSubject}`);
+    if (!mapped) throw new Error(`no trusted identity mapping for subject ${input.authenticatedSubject}`);
+    const ref: TrustedContextRef = {
+      principalId: mapped.principalId,
+      sessionId: mapped.sessionId,
+      requestId: randomUUID(),
+      membershipId: input.requestedMembershipId ?? mapped.membershipId ?? null,
+    };
+    // Derive the authoritative tenant from the database. Never accept a caller tenant.
+    const established = await withTrustedContext(this.pool, ref, async (_c, est) => est);
     const now = new Date();
     return {
       requestId: input.requestId,
@@ -703,18 +751,19 @@ export class PostgresStore implements ContinuumStore {
         subject: input.authenticatedSubject,
         principalType: "agent",
         roles: [],
-        authenticationProvider: "trusted_map",
+        authenticationProvider: "trusted_db_context",
         credentialId: null,
       },
       workload: input.workloadIdentity ?? null,
       tenant: {
-        tenantId: mapped.tenantId,
-        mappingVersion: "increment2-injected",
-        mappingDigest: "increment2-injected",
+        tenantId: established.tenantId,
+        mappingVersion: "s2b-db-derived",
+        mappingDigest: "s2b-db-derived",
         derivedFrom: "trusted_delegation",
         databaseContextId: `dbctx_${randomUUID()}`,
+        membershipId: established.membershipId,
       },
-      sessionId: input.sessionId,
+      sessionId: mapped.sessionId,
       authenticationTime: now,
       authenticationStrength: "single_factor",
       policySnapshot: { policyVersion: "postgres" },
@@ -726,10 +775,14 @@ export class PostgresStore implements ContinuumStore {
   }
 
   async transaction<T>(ctx: RequestContext, op: (tx: ContinuumTransaction) => Promise<T>): Promise<T> {
-    const tenant = requireTenant(ctx);
-    return withTenant(this.pool, tenant, (client) =>
-      op(new PgTransaction(ctx, client, this.pool, this.authority)),
-    );
+    const expected = requireTenant(ctx);
+    return withTrustedContext(this.pool, refFromCtx(ctx), (client, established) => {
+      // Defense in depth: the DB-derived tenant MUST match the context's tenant.
+      if (established.tenantId !== expected) {
+        throw new Error("trusted context tenant does not match request context (fail-closed)");
+      }
+      return op(new PgTransaction(ctx, client, this.pool, this.authority));
+    });
   }
 
   getIntent(ctx: RequestContext, intentId: string): Promise<Intent | null> {
@@ -737,11 +790,11 @@ export class PostgresStore implements ContinuumStore {
   }
 
   listEvidence(ctx: RequestContext) {
-    return loadEvidence(this.pool, requireTenant(ctx));
+    return loadEvidence(this.pool, refFromCtx(ctx));
   }
 
   verifyEvidenceChain(ctx: RequestContext): Promise<EvidenceVerificationResult> {
-    return verifyPersistedChain(this.pool, requireTenant(ctx));
+    return verifyPersistedChain(this.pool, refFromCtx(ctx));
   }
 
   /**
@@ -753,9 +806,9 @@ export class PostgresStore implements ContinuumStore {
    * persistence. This keeps the durable metrics honest rather than fabricated.
    */
   async getMetrics(ctx: RequestContext): Promise<MetricsSnapshot> {
-    const tenant = requireTenant(ctx);
-    const chain = await verifyPersistedChain(this.pool, tenant);
-    const derived = await withTenant(this.pool, tenant, async (c) => {
+    const ref = refFromCtx(ctx);
+    const chain = await verifyPersistedChain(this.pool, ref);
+    const derived = await withTrustedContext(this.pool, ref, async (c) => {
       const policyVersion =
         (await c.query("SELECT policy_version FROM policies ORDER BY policy_version DESC LIMIT 1")).rows[0]?.policy_version ?? "unknown";
       const evRows = (await c.query("SELECT event_type, decision FROM evidence_envelopes")).rows;

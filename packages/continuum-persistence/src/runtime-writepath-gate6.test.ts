@@ -7,14 +7,14 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   ContinuumEngine,
-  researchContext,
   signEd25519,
   type Ed25519Keypair,
   type RequestContext,
 } from "@continuum/core";
-import { adminPool, appPool, withTenant, type DbConfig } from "./pg";
+import { adminPool, appPool, type DbConfig } from "./pg";
 import { migrate } from "./migrate";
 import { persistExport } from "./repository";
+import { provisionForExport, serviceContext, withServiceCtx } from "../test/identity";
 import { PostgresStore, type WriteAuthority } from "./postgres-store";
 
 const OWNER = "did:continuum:enterprise:acme:owner";
@@ -23,7 +23,7 @@ const NOW = Date.parse("2026-07-15T00:00:00.000Z");
 const WP: DbConfig = { host: "127.0.0.1", port: 55444, database: "continuum_g6" };
 
 function ctx(): RequestContext {
-  return researchContext({ tenantId: "t_acme", principalId: AGENT, nowMs: NOW, source: "service_api" });
+  return serviceContext("t_acme", { nowMs: NOW, source: "service_api", subject: AGENT });
 }
 
 function rawIntent(engine: ContinuumEngine) {
@@ -69,10 +69,14 @@ beforeAll(async () => {
   intentId = engine.submitIntent(rawIntent(engine), NOW).intent_id;
   agentKeys = engine.store.agentKeys.get(AGENT)!;
   const seed = appPool(WP);
+  const seedAdmin = adminPool(WP);
   try {
-    await persistExport(seed, engine.exportState());
+    const exp = engine.exportState();
+    const resolveRef = await provisionForExport(seedAdmin, exp);
+    await persistExport(seed, exp, resolveRef);
   } finally {
     await seed.end();
+    await seedAdmin.end();
   }
 
   authority = {
@@ -164,7 +168,7 @@ describe("gate 6: proof replay + action idempotency over Postgres", () => {
     }
 
     // Exactly one action row and one action-proposed evidence event were written.
-    const { actions, events } = await withTenant(appPool(WP), "t_acme", async (c) => ({
+    const { actions, events } = await withServiceCtx(appPool(WP), "t_acme", async (c) => ({
       actions: (await c.query("SELECT count(*)::int AS n FROM action_proposals WHERE action_id = $1", ["act_fixed_1"])).rows[0].n,
       events: (await c.query("SELECT count(*)::int AS n FROM evidence_envelopes WHERE event_type = 'action.proposed'")).rows[0].n,
     }));

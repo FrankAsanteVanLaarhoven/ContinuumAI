@@ -1,24 +1,33 @@
 /**
  * Repository: persist an engine export durably, and reload the evidence chain
- * for independent re-verification. All writes go through tenant-scoped
- * transactions so RLS applies to inserts as well as reads (a forged tenant_id
- * is rejected by the policy's WITH CHECK).
+ * for independent re-verification. Every tenant-scoped read and write runs inside
+ * a TRUSTED-CONTEXT transaction (S2B): the tenant is derived by the database from
+ * a principal/session/membership, so RLS (keyed on continuum.current_tenant())
+ * applies to inserts and reads alike and a forged tenant GUC grants nothing. The
+ * caller supplies a resolver mapping each data tenant to the trusted identity
+ * provisioned for it.
  */
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import {
   verifyEnvelopeChain,
   type ChainVerification,
   type EngineExport,
   type EvidenceEnvelope,
 } from "@continuum/core";
-import { withTenant, withoutTenant } from "./pg";
+import { withTrustedContext, withoutTenant, type TrustedContextRef } from "./pg";
 
 const j = (v: unknown): string => JSON.stringify(v);
+
+/** Maps a data tenant id to the trusted identity that authorises writing/reading it. */
+export type RefResolver = (tenantId: string) => TrustedContextRef;
 
 export async function persistExport(
   pool: Pool,
   exp: EngineExport,
+  resolveRef: RefResolver,
 ): Promise<void> {
+  const wt = <T>(tenantId: string, fn: (c: PoolClient) => Promise<T>): Promise<T> =>
+    withTrustedContext(pool, resolveRef(tenantId), (c) => fn(c));
   // Global (non-tenant) rows.
   await withoutTenant(pool, async (c) => {
     // Write-once. The app role is INSERT-only (no UPDATE), so DO NOTHING — the
@@ -37,7 +46,7 @@ export async function persistExport(
   });
 
   for (const t of exp.tenants) {
-    await withTenant(pool, t.tenant_id, (c) =>
+    await wt(t.tenant_id, (c) =>
       c.query(
         `INSERT INTO tenants (tenant_id, display_name, trust_domain, residency)
          VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
@@ -47,7 +56,7 @@ export async function persistExport(
   }
 
   for (const p of exp.principals) {
-    await withTenant(pool, p.tenant_id, (c) =>
+    await wt(p.tenant_id, (c) =>
       c.query(
         `INSERT INTO principals (tenant_id, principal_id, kind, trust_domain, display_name, attested, build_hash, public_key_pem)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
@@ -57,7 +66,7 @@ export async function persistExport(
   }
 
   for (const m of exp.memory) {
-    await withTenant(pool, m.tenant_id, (c) =>
+    await wt(m.tenant_id, (c) =>
       c.query(
         `INSERT INTO memory_objects (tenant_id, memory_id, owner_id, memory_class, content, content_hash, classification, purpose_constraints, read_operation, residency, sensitive_fields, consent_basis, retention_policy, valid_until, confidence, verification_state, revocation_state, deletion_state, model_identity, supersedes, created_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) ON CONFLICT DO NOTHING`,
@@ -67,7 +76,7 @@ export async function persistExport(
   }
 
   for (const cn of exp.consent) {
-    await withTenant(pool, cn.tenant_id, (c) =>
+    await wt(cn.tenant_id, (c) =>
       c.query(
         `INSERT INTO consent (tenant_id, owner_id, purpose, granted, basis, valid_until)
          VALUES ($1,$2,$3,$4,$5,$6)`,
@@ -77,7 +86,7 @@ export async function persistExport(
   }
 
   for (const it of exp.intents) {
-    await withTenant(pool, it.tenant_id, (c) =>
+    await wt(it.tenant_id, (c) =>
       c.query(
         `INSERT INTO intents (tenant_id, intent_id, owner_id, actor_id, purpose, requested_operations, prohibited_operations, constraints, required_evidence, human_gate, actor_geo, model_id, agent_build, risk_score)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT DO NOTHING`,
@@ -91,7 +100,7 @@ export async function persistExport(
 
   for (const s of exp.capabilities) {
     const t = s.token;
-    await withTenant(pool, t.tenant_id, (c) =>
+    await wt(t.tenant_id, (c) =>
       c.query(
         `INSERT INTO capabilities (tenant_id, token_id, actor, subject, intent_id, purpose, audience, operations, resources, data_classification, holder_key_pem, environment, risk_threshold, approval_state, issued_at, expires_at, nonce, revocation_handle, evidence_correlation_id, signature)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) ON CONFLICT DO NOTHING`,
@@ -103,7 +112,7 @@ export async function persistExport(
   for (const handle of exp.revoked_handles) {
     const t = tokenByHandle.get(handle);
     if (!t) continue;
-    await withTenant(pool, t.tenant_id, (c) =>
+    await wt(t.tenant_id, (c) =>
       c.query(
         `INSERT INTO revocations (tenant_id, revocation_handle, token_id, revoked_at)
          VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
@@ -115,7 +124,7 @@ export async function persistExport(
   for (const a of exp.actions) {
     const tenant = intentTenant.get(a.intent_id);
     if (!tenant) continue;
-    await withTenant(pool, tenant, async (c) => {
+    await wt(tenant, async (c) => {
       await c.query(
         `INSERT INTO action_proposals (tenant_id, action_id, intent_id, actor, operation, action_class, state, requires_human_approval, expected_effect, reversible, cost_gbp, denied_reason)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT DO NOTHING`,
@@ -147,7 +156,7 @@ export async function persistExport(
   }
   for (const [tenant, list] of byTenant) {
     list.sort((a, b) => a.seq - b.seq);
-    await withTenant(pool, tenant, async (c) => {
+    await wt(tenant, async (c) => {
       for (const e of list) {
         await c.query(
           `INSERT INTO evidence_envelopes (tenant_id, event_id, seq, trace_id, owner_id, principal, intent_id, policy_version, event_type, decision, disclosed_objects, disclosure_digest, capability_id, tool_calls, human_approval, result_digest, model, ts, prev_hash, hash, signature)
@@ -189,9 +198,9 @@ function rowToEnvelope(row: any): EvidenceEnvelope {
 
 export async function loadEvidence(
   pool: Pool,
-  tenantId: string,
+  ref: TrustedContextRef,
 ): Promise<EvidenceEnvelope[]> {
-  return withTenant(pool, tenantId, async (c) => {
+  return withTrustedContext(pool, ref, async (c) => {
     const res = await c.query("SELECT * FROM evidence_envelopes ORDER BY seq ASC");
     return res.rows.map(rowToEnvelope);
   });
@@ -208,10 +217,10 @@ export async function loadPlatformKey(pool: Pool): Promise<string> {
 /** Reload the persisted evidence chain and re-verify it independently. */
 export async function verifyPersistedChain(
   pool: Pool,
-  tenantId: string,
+  ref: TrustedContextRef,
 ): Promise<ChainVerification> {
   const [entries, publicKey] = await Promise.all([
-    loadEvidence(pool, tenantId),
+    loadEvidence(pool, ref),
     loadPlatformKey(pool),
   ]);
   return verifyEnvelopeChain(entries, publicKey);
@@ -219,10 +228,10 @@ export async function verifyPersistedChain(
 
 export async function countRows(
   pool: Pool,
-  tenantId: string,
+  ref: TrustedContextRef,
   table: string,
 ): Promise<number> {
-  return withTenant(pool, tenantId, async (c) => {
+  return withTrustedContext(pool, ref, async (c) => {
     const res = await c.query(`SELECT count(*)::int AS n FROM ${table}`);
     return (res.rows[0]?.n as number) ?? 0;
   });

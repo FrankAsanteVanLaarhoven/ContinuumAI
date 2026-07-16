@@ -20,12 +20,12 @@ import {
   AsyncContinuumEngine,
   ContinuumEngine,
   generateEd25519,
-  researchContext,
   type RequestContext,
 } from "@continuum/core";
 import { adminPool, appPool, type DbConfig } from "./pg";
 import { migrate } from "./migrate";
 import { persistExport } from "./repository";
+import { provisionForExport, serviceContext } from "../test/identity";
 import { PostgresStore, type WriteAuthority } from "./postgres-store";
 
 const OWNER = "did:continuum:enterprise:acme:owner";
@@ -33,7 +33,7 @@ const AGENT = "spiffe://acme.ai/agents/procurement-agent";
 const NOW = Date.parse("2026-07-15T00:00:00.000Z");
 
 function ctx(tenantId: string): RequestContext {
-  return researchContext({ tenantId, principalId: AGENT, nowMs: NOW, source: "service_api" });
+  return serviceContext(tenantId, { nowMs: NOW, source: "service_api", subject: AGENT });
 }
 
 function canonicalIntent(engine: ContinuumEngine) {
@@ -88,10 +88,14 @@ beforeAll(async () => {
   engine = new ContinuumEngine();
   intentId = canonicalIntent(engine).intent_id;
   const seed = appPool(WP);
+  const seedAdmin = adminPool(WP);
   try {
-    await persistExport(seed, engine.exportState());
+    const exp = engine.exportState();
+    const resolveRef = await provisionForExport(seedAdmin, exp);
+    await persistExport(seed, exp, resolveRef);
   } finally {
     await seed.end();
+    await seedAdmin.end();
   }
 
   // 3. write authority: the engine's own keypair (its public half is the persisted anchor).
@@ -166,10 +170,14 @@ describe("PostgresStore · authorizeIntent write path over real RLS", () => {
     const eng2 = new ContinuumEngine();
     const id2 = canonicalIntent(eng2).intent_id;
     const seed = appPool(cfg2);
+    const seed2Admin = adminPool(cfg2);
     try {
-      await persistExport(seed, eng2.exportState());
+      const exp2 = eng2.exportState();
+      const resolveRef = await provisionForExport(seed2Admin, exp2);
+      await persistExport(seed, exp2, resolveRef);
     } finally {
       await seed.end();
+      await seed2Admin.end();
     }
 
     const store2 = new PostgresStore(cfg2, {

@@ -7,15 +7,14 @@
  * transaction-local `app.current_tenant` must not leak across the shared pool.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { AsyncContinuumEngine, researchContext, type RequestContext } from "@continuum/core";
-import { appPool, dbConfigFromEnv, withTenant } from "./pg";
+import { AsyncContinuumEngine, type RequestContext } from "@continuum/core";
+import { appPool, dbConfigFromEnv } from "./pg";
+import { serviceContext, withServiceCtx } from "../test/identity";
 import { PostgresStore } from "./postgres-store";
 
 const NOW = Date.parse("2026-07-15T00:00:00.000Z");
-const acme = (): RequestContext =>
-  researchContext({ tenantId: "t_acme", principalId: "spiffe://acme.ai/agents/procurement-agent", nowMs: NOW, source: "console_api" });
-const globex = (): RequestContext =>
-  researchContext({ tenantId: "t_globex", principalId: "spiffe://globex.health/agents/billing-agent", nowMs: NOW, source: "console_api" });
+const acme = (): RequestContext => serviceContext("t_acme", { nowMs: NOW, source: "console_api" });
+const globex = (): RequestContext => serviceContext("t_globex", { nowMs: NOW, source: "console_api" });
 
 let store: PostgresStore;
 let engine: AsyncContinuumEngine;
@@ -35,7 +34,7 @@ describe("RLS through the async runtime path (gate 5)", () => {
   });
 
   it("a foreign-tenant intent read returns null (invisible), own tenant sees it", async () => {
-    const acmeIntent = await withTenant(appPool(dbConfigFromEnv()), "t_acme", async (c) =>
+    const acmeIntent = await withServiceCtx(appPool(dbConfigFromEnv()), "t_acme", async (c) =>
       (await c.query("SELECT intent_id FROM intents LIMIT 1")).rows[0]?.intent_id as string | undefined,
     );
     expect(acmeIntent).toBeTruthy();

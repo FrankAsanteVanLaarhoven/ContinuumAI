@@ -100,7 +100,19 @@ boundary is honest, and to be fixed as separately-measured interventions:
   (`research/sif-bench/interventions/i5/I5_RESULTS.md`): a trusted SECURITY DEFINER
   wrapper resolves the tenant from an authoritative mapping and stamps a
   tamper-evident lock, so a re-key reads nothing. Superuser bypass remains a
-  documented non-goal._
+  documented non-goal._ **CLOSED on the production public data plane (S2B, migration
+  `0004`):** all `public.*` policies now key on `continuum.current_tenant()`, which
+  returns a tenant only for a live, membership-pinned `(principal, session,
+  membership, tenant)` context established through the SECURITY DEFINER
+  `begin_authenticated_context`. A raw `set_config('app.current_tenant', …)` — or
+  re-keying only the tenant GUC — yields NULL, so the `continuum_app` role cannot
+  create access by setting GUCs; it holds no privileges on the identity tables and
+  cannot fabricate an owned membership. Bounded to the application-role model:
+  superuser and trusted-function-owner bypass remain non-goals. See
+  `docs/S2B_PUBLIC_DATA_PLANE_MIGRATION.md` and
+  `src/public-trusted-context.test.ts` / `src/privilege-audit.test.ts`. (The
+  concurrency baseline that reproduces this gap is pinned to the pre-S2B schema, so
+  its before-picture is unchanged.)_
 - **GAP-6** — no idempotency on client-supplied action ids; a reused id
   overwrites rather than deduplicates (`C2-11`). _Remediated under the evaluated
   bound arms — intervention **I6**
@@ -115,17 +127,16 @@ post-revocation disclosure 0, human-gate bypass 0, cross-tenant observation 0,
 duplicate execution 0, chain-fork 0, append-only enforced. See
 `research/sif-bench/concurrency/CONCURRENCY_BASELINE.md`.
 
-## Phase 3 S1+S2 — trusted database-context boundary (schema present; not yet wired into public RLS)
+## Phase 3 S1+S2 — trusted database-context boundary (wired into public RLS by S2B)
 
 Migration `0003_identity.sql` introduces the identity/membership/session schema and a
 SECURITY DEFINER context boundary that hardens the direction of GAP-5 (app-cooperative
-`app.current_tenant`) into a **database privilege-layer** control. Honesty boundary:
-this milestone is verified on the demonstration table `continuum.context_probe` only —
-the production `public.*` tenant isolation is **not yet** rewired onto
-`continuum.current_tenant()` (that is the next milestone, **S2B — Public data-plane
-trusted-context migration**). Until then GAP-5's app-cooperative re-key
-remains reachable on the `public.*` slice; the mechanism below is the production
-embodiment being staged in.
+`app.current_tenant`) into a **database privilege-layer** control. At S1+S2 this was
+verified on the demonstration table `continuum.context_probe` only. **S2B (migration
+`0004`) has since rewired the production `public.*` tenant isolation onto
+`continuum.current_tenant()`** (membership-pinned), so the control below now protects
+the real data plane and GAP-5 is closed on it under the application-role model — see
+the GAP-5 note above and `docs/S2B_PUBLIC_DATA_PLANE_MIGRATION.md`.
 
 | Threat / misuse | Control (S1+S2) | Verified by |
 |-----------------|-----------------|-------------|
