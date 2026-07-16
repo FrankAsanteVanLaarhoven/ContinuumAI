@@ -114,3 +114,33 @@ Held under the tested interleavings (bounded, seed `0xC0FFEE`, ≤ 2 workers):
 post-revocation disclosure 0, human-gate bypass 0, cross-tenant observation 0,
 duplicate execution 0, chain-fork 0, append-only enforced. See
 `research/sif-bench/concurrency/CONCURRENCY_BASELINE.md`.
+
+## Phase 3 S1+S2 — trusted database-context boundary (schema present; not yet wired into public RLS)
+
+Migration `0003_identity.sql` introduces the identity/membership/session schema and a
+SECURITY DEFINER context boundary that hardens the direction of GAP-5 (app-cooperative
+`app.current_tenant`) into a **database privilege-layer** control. Honesty boundary:
+this milestone is verified on the demonstration table `continuum.context_probe` only —
+the production `public.*` tenant isolation is **not yet** rewired onto
+`continuum.current_tenant()` (that is the next milestone, **S2B — Public data-plane
+trusted-context migration**). Until then GAP-5's app-cooperative re-key
+remains reachable on the `public.*` slice; the mechanism below is the production
+embodiment being staged in.
+
+| Threat / misuse | Control (S1+S2) | Verified by |
+|-----------------|-----------------|-------------|
+| App chooses a foreign tenant | The context function takes **no tenant input**; tenant is derived from a revalidated membership | `identity-context.test.ts` — "there is no way to pass a tenant" |
+| App selects another principal's membership | `requested_membership` must be owned by the principal, else deny | "membership hint only selects among the principal's OWN active memberships" |
+| Ambiguous multi-tenant principal silently gets a tenant | Multiple active memberships without explicit selection → deny (never a default pick) | "ambiguous multi-tenant membership denies without explicit selection" |
+| Revoked membership still grants access | Active-and-current membership required (`status`, `revoked_at`, validity window) | "revoked membership denies" |
+| Suspended/deleted principal establishes context | Principal must be `active` with no suspend/delete timestamp | "suspended principal denies" |
+| Expired/foreign/revoked session establishes context | Session must be active, belong to the principal, and be within idle+absolute expiry; identity-version must match | "expired session denies", "session that belongs to a different principal denies" |
+| Forged `app.current_tenant` GUC creates authority (GAP-5 direction) | `current_tenant()` returns `NULL` unless a backing active session **and** active membership exist for the triple; RLS then shows nothing | "a forged app.current_tenant GUC creates NO authority" |
+| Context leaks across pooled connection reuse | Context is transaction-local (`set_config(..., is_local => true)`); gone at COMMIT/ROLLBACK | "context is transaction-local … does not survive across pooled reuse" |
+| App tampers with identity/membership mappings | App role holds no table privileges on identity tables; SELECT/INSERT/UPDATE/DELETE all denied | "the app role cannot read or mutate the identity/membership tables directly" |
+
+Non-goals restated for honesty: the database never verifies OIDC/JWT tokens (identity
+validation and DB mapping are distinct layers); SECURITY DEFINER runs as the narrow
+non-login `continuum_authctx`, never superuser; and a database superuser still bypasses
+RLS by design (key-custody/roadmap answer, unchanged). See
+`docs/PHASE3_S1_S2_MIGRATION.md` and `docs/PHASE3_AUTH_SPEC.md`.
