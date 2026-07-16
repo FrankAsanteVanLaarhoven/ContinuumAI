@@ -24,3 +24,4 @@ export * from "./interventions/freshness";
 export * from "./stageb/normalize";
 export * from "./async";
 export * from "./identity";
+export * from "./browser";

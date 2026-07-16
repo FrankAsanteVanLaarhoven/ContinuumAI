@@ -333,3 +333,52 @@ cookies, CSRF middleware, refresh tokens, user-facing login, KMS/HSM PKCE storag
 workload identity, break-glass, deployment, or HTTP SIF-Bench v0.2. No
 production-readiness claim; no resistance to database-superuser or privileged
 session-role compromise.
+
+## Phase 3 S4C — browser transport & session boundary
+
+S4C exposes the S4B authorization-code state machine through a hardened, framework-
+neutral browser transport and binds the resulting S3 session to secure cookies and
+CSRF-protected requests, WITHOUT changing identity/tenant/authorization semantics. A
+completed login carries no tenant authority; the browser cookie is never a source of
+tenant authority (tenant resolution stays the S2B trusted context, keyed on the
+principal the middleware resolves). It ships a deterministic local authorization
+server (never a real provider); production configuration is refused.
+
+| Threat / misuse | Control (S4C) | Verified by |
+|-----------------|---------------|-------------|
+| Session cookie forged / replayed | opaque S3 credential only; server-side validation every request; keyed digest at rest (S3) | `flow.test.ts`, `middleware.test.ts` |
+| Cookie carries tenant/role authority | cookie value is only the opaque credential; middleware returns principal, NEVER tenant; tenant via S2B | `cookies.test.ts`, `middleware.test.ts` |
+| Cookie theft over http / cross-site | production Secure + `__Host-` prefix + SameSite=Lax + Path=/ + host-only; HSTS when https guaranteed | `cookies.test.ts`, `config.test.ts` |
+| Session issued before verification | cookie minted ONLY after S4B `complete()` fully succeeds; every failure issues no session | `flow.test.ts` (all denial scenarios) |
+| Session fixation | S4B always mints a NEW session; no pre-auth credential upgraded; rotation preserves absolute expiry, old session `rotated` | `flow.test.ts`, `middleware.test.ts` |
+| Callback replay after login | S4B atomic one-time consume; a second callback with the same state mints no session | `flow.test.ts` "replay" |
+| Open redirect / arbitrary returnTo | redirect targets from trusted config; `returnTo` is an allowlisted RELATIVE path (absolute/`//host`/backslash rejected); callback → fixed destination | `origin.test.ts`, `flow.test.ts` |
+| Host/forwarded-header spoofing | host validated against configured origin; forwarded headers honoured only in explicit trusted-proxy mode; conflicting forwarded rejected | `origin.test.ts` |
+| CSRF on state-changing requests | keyed, session-bound double-submit token + origin check; safe GET cannot mutate; login CSRF via S4B state/nonce | `csrf.test.ts`, `session-flow.test.ts` |
+| CSRF token transplanted / stale after rotation | MAC bound to session id → another session or a rotated session id fails verification | `csrf.test.ts`, `session-flow.test.ts` |
+| Logout via cookie deletion only / cross-site trigger | logout revokes server-side BEFORE clearing; requires valid CSRF + origin; failed CSRF never revokes; **fails closed (503, no clear) if revocation storage is unavailable**; idempotent | `session-flow.test.ts` |
+| New route accidentally public | default-protected exact-match allowlist (no prefix/wildcard leakage) | `middleware.test.ts` |
+| Session-store outage treated as authenticated | fails closed (`session_store_unavailable`); does not clear a possibly-valid cookie | `middleware.test.ts` |
+| Secret leakage in evidence/errors | redacted evidence (safe ids + keyed digests); generic error classes; no raw state/code/nonce/credential/CSRF/callback-URL | `hygiene.test.ts` |
+| Silent test fallback in production | fail-closed config: prod refuses deterministic-local server / insecure cookie / wildcard origin / arbitrary proxy trust / missing CSRF key + composed S3/S4A/S4B guards | `config.test.ts` |
+
+**Claim boundaries (S4C — do not overstate).** The authorization server is a
+deterministic local test double and the code exchanger is a fixture — NOT a real
+identity provider or token endpoint. There is no interactive production browser login,
+no refresh tokens, no KMS/HSM PKCE custody, no workload identity, no break-glass, and
+no cross-region/cross-deployment session consistency. The browser cookie never confers
+tenant authority; S2B remains the sole tenant-authority transition. S4C is a
+browser-facing authentication transport with tested cookie/CSRF/origin/redirect/session
+controls **in the deterministic local environment** — not production-ready
+authentication, not evidence of secure operation behind a real reverse proxy / CDN /
+load balancer / TLS terminator / deployed origin, and not resistant to a
+database-superuser or privileged session-role compromise. `CONTINUUM_TRUST_PROXY` is an
+explicit on/off flag, NOT deployment-grade forwarded-header validation: it does not pin
+the trusted proxy by source address, so forwarded headers must not be relied on in a
+deployed environment until immediate-peer trust is implemented. CSP is emitted but not
+claimed effective against a production script/resource inventory; HSTS stays
+deployment-gated.
+
+**Non-goals (S4C).** No real IdP configuration/SDK/credentials, refresh tokens, UI
+redesign, workload identity, break-glass, deployment, HTTP SIF-Bench v0.2, or
+production-readiness claim.
