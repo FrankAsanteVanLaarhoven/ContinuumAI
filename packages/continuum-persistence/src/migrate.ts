@@ -18,6 +18,7 @@ const MIGRATIONS = [
   "0003_identity.sql",
   "0004_public_trusted_context.sql",
   "0005_session_identity.sql",
+  "0006_replay_ledger.sql",
 ];
 
 /**

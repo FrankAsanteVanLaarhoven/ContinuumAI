@@ -213,3 +213,59 @@ to the real verifier milestone.
 authorization-code exchange, PKCE, cookies, CSRF, refresh tokens, workload identity,
 or break-glass. The deterministic verifier is dev/test only and is refused in
 production. Tenant authority remains the S2B trusted-context path.
+
+## Phase 3 S4A — provider-neutral real verifier cryptographic boundary
+
+S4A replaces the deterministic assertion verifier with provider-neutral JWT/JWS
+verification using standards-based JOSE processing (`jose`, pinned) **within the
+explicitly supported algorithms, key types, issuer policies and claim-validation
+profile** (not universal JOSE interoperability), normalizing a verified assertion to
+the SAME S3 `VerifiedIdentity` and minting no tenant authority. The
+claim-layer separation from S3 is unchanged: identity verification → external identity;
+session validation → internal principal; trusted membership resolution → tenant
+authority (S2B, the sole transition). Protocol level only — no browser routes,
+redirects, PKCE, cookies, CSRF, provider SDK, workload identity, or break-glass.
+
+| Threat / misuse | Control (S4A) | Verified by |
+|-----------------|---------------|-------------|
+| Oversized/malformed assertion drives unbounded work | hard input limits before parse and before any network; distinct `assertion_too_large`/`malformed_jwt` | `jwt-verifier.test.ts` |
+| `alg=none` / unsigned token | asymmetric-only supported set; `none` denied | `jwt-verifier.test.ts` "unsigned (alg=none)" |
+| Symmetric/asymmetric algorithm confusion | alg in BOTH issuer allowlist and supported set; key `kty`/`crv` must match; jose restricted to the one alg; HMAC rejected | `jwt-verifier.test.ts` (HS256, key-type mismatch, wrong key) |
+| Forged / altered payload or header | genuine JWS signature verification; altered payload/header ⇒ `signature_invalid` | `jwt-verifier.test.ts`, `s4a-jwt-integration.test.ts` |
+| Unknown / disabled / non-exact issuer | pre-registered issuer policy; unverified iss is routing-only; exact match required | `jwt-verifier.test.ts` issuer cases |
+| Wrong / malformed audience | audience must intersect the configured set; non-string denies | `jwt-verifier.test.ts` audience cases |
+| Expired / premature / future / over-age token | temporal enforcement with bounded skew + max age; distinct classes | `jwt-verifier.test.ts` temporal cases |
+| Key outage / staleness / unknown or ambiguous kid | key provider models availability/staleness/kid; outage ≠ signature failure; one bounded refresh; single-flight; negative cache | `cached-key-provider.test.ts` |
+| Key rotation / removal / version regression | rotation accepted after refresh; removed key rejected past freshness; key-set version+digest in evidence | `cached-key-provider.test.ts` |
+| SSRF via JWKS retrieval | issuer→URL is config-only (assertion cannot choose); HTTPS-required, no redirects, no creds, bounded timeout/size, content-type checked, prod private/loopback refused | `jwks-http.test.ts`, `isPrivateHost` |
+| Assertion replay | durable, keyed-digest-only replay ledger; insert-first `ON CONFLICT DO NOTHING`; one acceptance under concurrency; restart-safe; (issuer,kind)-scoped | `s4a-replay.test.ts` |
+| Replay-store outage admits replay | fails closed: `unavailable` ⇒ deny (`replay_store_unavailable`) | `replay-ledger.test.ts`, verifier |
+| Raw secrets in storage/evidence | ledger + evidence hold digests and safe ids only; raw nonce/jti/assertion/signature/keys never stored | `s4a-replay.test.ts`, evidence shape |
+| A valid JWT self-grants a tenant | normalized identity carries no tenant; session/replay role has no tenant_memberships / public.* / begin_authenticated_context | `s4a-jwt-integration.test.ts` |
+| Silent unauthenticated fallback | fail-closed config: prod requires jwt verifier + cached provider + postgres replay store; deterministic/fixtures refused | `jwt-config.test.ts` |
+
+**Fail-closed matrix (S4A).** Deny when: input exceeds limits; header/payload
+malformed; issuer unregistered/disabled; algorithm outside allowlist or key-type
+mismatch; key id missing/unknown/ambiguous; keys unavailable/stale or refresh failed;
+signature invalid; audience/subject/temporal/nonce/jti/policy-version checks fail;
+replay detected; replay store unavailable; any internal uncertainty.
+
+**Replay-store deletion hardening (S4A).** The prune path is a SECURITY-DEFINER
+function restricted to already-expired rows; the session role has EXECUTE on it but no
+direct DELETE, so a compromised session role cannot remove a live consumed entry to
+re-enable a replay.
+
+**Claim boundaries (S4A — do not overstate).** (1) Replay: durable **single-database**
+replay detection for configured nonce/`jti` policies via atomic insert-first; NOT
+global/cross-region/cross-deployment replay consistency, NOT browser-flow nonce
+protection (no browser protocol yet), NOT prevention of credential theft before first
+use. (2) Retrieval: the tested JWKS transport applies configured destination/protocol/
+redirect/timeout/response-size/content-type restrictions; this is NOT complete SSRF
+elimination — DNS rebinding, proxy behaviour, resolver configuration and
+infrastructure-level egress remain operational boundaries unless independently tested.
+
+**Non-goals (S4A).** No real identity-provider onboarding, provider SDK, browser
+redirect/callback, authorization-code exchange, PKCE, cookies, CSRF, refresh tokens,
+user-facing login, workload identity, break-glass, or HTTP SIF-Bench v0.2. No
+production-readiness claim, and no resistance to database-superuser or privileged
+session-role compromise.

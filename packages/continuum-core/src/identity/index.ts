@@ -12,3 +12,12 @@ export * from "./session-digest";
 export * from "./auth-events";
 export * from "./auth-boundary";
 export * from "./config";
+// S4A — provider-neutral real verifier cryptographic boundary.
+export * from "./jwt-types";
+export * from "./jwt-limits";
+export * from "./replay-ledger";
+export * from "./jwks-source";
+export * from "./http-jwks-source";
+export * from "./cached-key-provider";
+export * from "./jwt-verifier";
+export * from "./jwt-config";
