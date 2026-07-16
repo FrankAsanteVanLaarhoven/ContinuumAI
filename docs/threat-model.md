@@ -155,3 +155,61 @@ validation and DB mapping are distinct layers); SECURITY DEFINER runs as the nar
 non-login `continuum_authctx`, never superuser; and a database superuser still bypasses
 RLS by design (key-custody/roadmap answer, unchanged). See
 `docs/PHASE3_S1_S2_MIGRATION.md` and `docs/PHASE3_AUTH_SPEC.md`.
+
+## Phase 3 S3 — identity-verification & session boundary (vendor-neutral)
+
+The S3 boundary converts an externally verified identity assertion into a normalized
+internal identity and a restart-safe, revocable session, WITHOUT granting tenant
+authority from untrusted claims. Four layers stay distinct: verifier → normalized
+`VerifiedIdentity` → principal mapping (issuer+subject → principal) → session →
+(later) S2B trusted DB context. No layer accepts an authoritative tenant from the
+caller. This milestone ships the deterministic (dev/test-only) verifier and the
+PostgreSQL session layer; a real verifier, browser flow, and provider SDK are later
+steps.
+
+**Claim-layer separation (do not conflate).** These are three distinct authority
+claims and none implies the next:
+
+- Identity-assertion verification → establishes a normalized *external identity*.
+- Session validation → establishes an authenticated *internal principal*.
+- Trusted membership resolution → establishes *tenant authority*.
+
+A valid identity or a valid session never implies tenant membership by itself. S2B
+(`continuum.current_tenant()` from an active owned membership) remains the sole
+authority transition into the transaction-local tenant context.
+
+| Threat / misuse | Control (S3) | Verified by |
+|-----------------|--------------|-------------|
+| Forged/altered credential accepted | signature check + shared normalization; 15 distinct failure classes, never collapsed to success | `verifier.test.ts` |
+| Wrong recipient (audience confusion) | audience must intersect the issuer's allowed audiences | `verifier.test.ts` "wrong audience denies" |
+| Algorithm confusion (trusting header alg) | alg must be in BOTH the global and issuer allowlist; key alg must match | `verifier.test.ts` "unsupported algorithm" |
+| Expired / premature / future-dated / over-age credential | temporal enforcement with bounded clock skew + max credential age | `verifier.test.ts` |
+| Unavailable / stale / unknown verification keys | key provider models availability + staleness + kid; fail closed | `verifier.test.ts`, config |
+| Credential replay (deterministic verifier) | single-use credential-id guard, **process-local and test-scoped only** (see limitation below) | `verifier.test.ts` "replay denies" |
+| Subject collision across issuers | stable key is (issuer, subject) — never subject/email/username alone | `verifier.test.ts` "subject unique within issuer" |
+| Unmapped / disabled / revoked external identity | deny-by-default mapping; no implicit enrolment | `s3-session.test.ts` mapping denials |
+| Suspended/deleted principal authenticates | principal-state check at mapping and at each validation | `s3-session.test.ts` |
+| Stolen session-store dump replayed | only a KEYED, session-id-bound digest is stored; raw credential never persisted | `s3-session.test.ts` "stored only as digest", `session-digest.test.ts` |
+| Session fixation / non-expiring session | atomic rotation (never both active), idle + absolute expiry, rotation preserves absolute lifetime | `s3-session.test.ts` rotation/expiry |
+| Identity/privilege change with a live session | identity-version and mapping-version staleness deny on the next transaction | `s3-session.test.ts` |
+| Session grants a tenant directly | the session role has NO tenant_memberships / public.* / begin_authenticated_context access; a validated session carries no tenant | `s3-session.test.ts` "no tenant-authority path" |
+| Secrets in the audit trail | auth events are digests + non-secret ids only; raw credentials/claims/secrets never written | `s3-session.test.ts` "no raw credential in the stream" |
+| Silent unauthenticated fallback | explicit fail-closed config: production refuses the deterministic verifier and requires postgres session persistence + digest keys | `config.test.ts` |
+
+**Fail-closed matrix (S3).** Deny when: verification keys or policy unavailable;
+identity mapping unavailable; session store unavailable; digest key version
+unavailable; principal state unresolved; identity/mapping version unconfirmed;
+revocation state unconfirmed. There is no in-memory session fallback.
+
+**Deterministic replay limitation (S3).** Credential replay detection in the
+deterministic verifier is process-local and test-scoped. It is not restart-safe or
+distributed and is not a production replay defence. S3 is NOT described as providing
+durable external-assertion replay prevention: the durable guarantees in this system
+apply to sessions and the previously implemented proof-consumption ledger, not to
+external authentication assertions. Durable/shared nonce-replay handling is deferred
+to the real verifier milestone.
+
+**Non-goals (S3).** No real OIDC provider, remote JWKS fetch, browser redirect,
+authorization-code exchange, PKCE, cookies, CSRF, refresh tokens, workload identity,
+or break-glass. The deterministic verifier is dev/test only and is refused in
+production. Tenant authority remains the S2B trusted-context path.

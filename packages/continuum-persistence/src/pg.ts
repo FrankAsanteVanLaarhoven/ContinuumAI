@@ -47,6 +47,22 @@ export function adminPool(cfg: DbConfig): PgPool {
 }
 
 /**
+ * Connection pool for the dedicated session-service role `continuum_session`
+ * (S3): manages sessions and reads identity state, but has NO tenant authority
+ * path (no tenant_memberships, no public.*, no begin_authenticated_context).
+ */
+export function sessionPool(cfg: DbConfig): PgPool {
+  return new Pool({
+    host: cfg.host,
+    port: cfg.port,
+    database: cfg.database,
+    user: "continuum_session",
+    password: "continuum_session",
+    max: 4,
+  });
+}
+
+/**
  * Set ONLY the raw `app.current_tenant` GUC — the pre-S2B application-cooperative
  * mechanism. After migration 0004 the public.* policies key on
  * `continuum.current_tenant()`, which ignores a GUC that has no backing

@@ -10,10 +10,12 @@
  */
 import {
   createHash,
+  createHmac,
   createPrivateKey,
   createPublicKey,
   generateKeyPairSync,
   sign as nodeSign,
+  timingSafeEqual,
   verify as nodeVerify,
 } from "node:crypto";
 
@@ -34,6 +36,25 @@ export function generateEd25519(): Ed25519Keypair {
 /** SHA-256 over a UTF-8 string or buffer, hex-encoded. */
 export function sha256Hex(input: string | Buffer): string {
   return createHash("sha256").update(input).digest("hex");
+}
+
+/** Keyed HMAC-SHA-256 over a UTF-8 message, hex-encoded. Used for keyed digests
+ *  (e.g. session-credential digests) where a plain hash would be inadequate. */
+export function hmacSha256Hex(keyBase64: string, message: string): string {
+  return createHmac("sha256", Buffer.from(keyBase64, "base64")).update(message, "utf8").digest("hex");
+}
+
+/** Constant-time comparison of two hex/ASCII strings. Never throws; false on any
+ *  length/format mismatch. For comparing secrets and digests without a timing leak. */
+export function constantTimeEqual(a: string, b: string): boolean {
+  try {
+    const ab = Buffer.from(a, "utf8");
+    const bb = Buffer.from(b, "utf8");
+    if (ab.length !== bb.length) return false;
+    return timingSafeEqual(ab, bb);
+  } catch {
+    return false;
+  }
 }
 
 /** Detached Ed25519 signature over a UTF-8 message, base64-encoded. */

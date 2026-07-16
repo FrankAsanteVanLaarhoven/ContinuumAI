@@ -12,7 +12,13 @@ import type { DbConfig } from "./pg";
 
 const { Client } = pg;
 const here = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS = ["0001_init.sql", "0002_runtime.sql", "0003_identity.sql", "0004_public_trusted_context.sql"];
+const MIGRATIONS = [
+  "0001_init.sql",
+  "0002_runtime.sql",
+  "0003_identity.sql",
+  "0004_public_trusted_context.sql",
+  "0005_session_identity.sql",
+];
 
 /**
  * Apply the migrations in order. `through` pins the schema to a specific version
