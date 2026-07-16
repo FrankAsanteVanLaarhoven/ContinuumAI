@@ -13,13 +13,16 @@ Two maturity layers coexist (measured, not asserted — see the audit for file e
 
 - **Control-plane + data plane (validated):** deny-by-default authorization, capability
   tokens, disclosure broker, human gate, revocation, I1–I3/I7 interventions, Ed25519
-  hash-chained evidence — **68/68 core tests**. Durable PostgreSQL data plane with
-  row-level-security isolation, least-privilege role, append-only evidence, independent
-  chain re-verification — **14 persistence tests**. Stage-A adversarial suite is a
-  build-failing CI gate.
-- **Client-facing runtime (incomplete):** the console SSR and `/api/state` + `/api/rerun`
-  run an **in-memory** engine with a **hardcoded tenant** and **no authentication**; the
-  model is **simulated**; there is no deployment, secrets, or session tier.
+  hash-chained evidence — **91 core tests** (frozen 68 + async boundary/continuation).
+  Durable PostgreSQL data plane with row-level-security isolation, least-privilege role,
+  append-only evidence, independent chain re-verification, and the full async runtime path
+  — **44 persistence tests**. Stage-A adversarial suite is a build-failing CI gate.
+- **Client-facing runtime (Phase 2 done; auth tier pending):** the console SSR and
+  `/api/runtime` now read **durable** state through the **async engine** over a
+  **fail-closed store selection** (`CONTINUUM_STORE`); the synchronous research engine has
+  been removed from the console path. Still pending (Phase 3+): OIDC **authentication** and
+  session tier (the console operator identity is currently a fixed subject), real model
+  gateway, deployment/secrets. The model remains **simulated**.
 
 Continuum provides **measurable leakage-resistance within an explicitly defined threat
 model** (see `docs/CLAIMS.md`), not a proof of impossibility. That boundary must be
@@ -47,15 +50,34 @@ Trigger: the audit confirms the console bypasses PostgreSQL — it does.
 Build the **smallest** adapter that connects the **existing** persistence package to the
 live path. It **must**:
 
-> **Delivery status.** Increment 1 (Steps A–B) is implemented under
-> `packages/continuum-core/src/async/`: the async `ContinuumStore`/`ContinuumTransaction`
-> contract, `RequestContext` (tenant derived by the boundary, never caller-passed), the
-> config gate (`resolveStoreMode`, fail-closed in production, no silent fallback), the
-> `InMemoryAsyncStore` research adapter (delegates to the frozen engine → identical
-> semantics), the `AsyncContinuumEngine`, and contract/config/import-boundary suites.
-> Held for interface review. Increment 2 (Steps C–E) — `PostgresStore` over the existing
-> schema, console/API wiring, and the real-DB RLS/restart/evidence-durability tests —
-> follows after this contract is reviewed.
+> **Delivery status (Phase 2 complete — held for review).** The asynchronous
+> PostgreSQL runtime path is implemented end to end and green on real embedded
+> PostgreSQL:
+> - **Async boundary** (`packages/continuum-core/src/async/`): `ContinuumStore` /
+>   `ContinuumTransaction` contract, `RequestContext` (tenant derived by the
+>   boundary, never caller-passed), config gate (`resolveStoreMode` /
+>   `assertProductionStore` — fail-closed in production, no silent fallback),
+>   `InMemoryAsyncStore` research adapter (delegates to the frozen engine → identical
+>   semantics), `AsyncContinuumEngine`.
+> - **`PostgresStore`** over the EXISTING schema — reads, `submitIntent`,
+>   `authorizeIntent`, `discloseForToken` (durable proof-replay via `consumed_proofs`,
+>   migration 0002), `authorizeAction` (idempotent), `revokeCapability`,
+>   `getMetrics` (durable-derived), `verifyEvidenceChain`, real health probes. Every
+>   security-relevant read/check/write/evidence-append runs in one shared
+>   transaction; restart-safe evidence continuation (GAP-4); custody guard binds the
+>   signing key to the persisted anchor.
+> - **Console/API** (`apps/console/lib/runtime.ts`, `app/api/runtime`): reads durable
+>   state via the async engine; the synchronous research engine was REMOVED from the
+>   console (import-boundary test enforces it).
+> - **Tests:** shared in-memory/postgres contract; RLS through the API path
+>   (foreign-tenant denial + pooled-connection reuse); restart persistence for state,
+>   evidence, revocation, proof-replay, and action-idempotency. Frozen core (91) and
+>   research suites unchanged.
+>
+> Deferred (documented, not silently stubbed): exact SCT-signature re-verification at
+> disclose (needs the canonical token persisted — the capabilities projection is
+> lossy); live-observability metrics (a telemetry concern, not durable state);
+> KMS/HSM key custody and the auth/session tier (Phases 3–4).
 
 **Store-boundary decision (settled): make the production engine asynchronous end to end.**
 Per-request Map hydration of PostgreSQL state was **rejected** — it would reintroduce the very
